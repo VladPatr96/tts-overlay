@@ -38,3 +38,38 @@ pwsh -File stop-overlay.ps1
 ## Лицензия
 
 MIT (см. `LICENSE`), сторонние компоненты — в `NOTICE.md`.
+
+<!-- hq:start -->
+## Штаб hq
+
+Задачи, решения и память по этому проекту живут в штабе `D:/projects/my_projects/hq`, карточка — `projects/tts-overlay/README.md`.
+
+- **Что в работе** — раздел «Открытые задачи» в карточке и файлы `projects/tts-overlay/tasks/<номер>-<slug>.md`. Это зеркало GitHub Issues: руками не правь, оно пересобирается.
+- **Что уже решали** — «Память решений» в карточке и разборы в `projects/tts-overlay/memory/`. Упёрся или задача похожа на прошлую — сперва посмотри туда, а не решай заново.
+- **Что было в прошлых сессиях** — выжимки в `projects/tts-overlay/sessions/`: их сохраняют хуки при сжатии и сбросе контекста. Перед новой задачей посмотри выжимки по теме — номер задачи, `topic` и `keywords` во frontmatter.
+- **Задача** — один GitHub issue с категорией `bug` или `enhancement` и проверяемым условием готовности. Заводит его человек командой `/relay`; без этого issue не создавай. В `Done` переводит только человек: слиянием PR или словом «принято».
+- **Где человеку не хватило знаний** — путаница терминов, «не знаю» на вопрос специалиста — запиши тему для изучения: `relay learn add` (правила — в скилле `relay`).
+
+## Agent skills
+
+Скиллы Мэтта Покока (`/wayfinder`, `/grilling`, `/to-spec`, `/to-tickets`, `/implement-spec`, `/triage` и другие) работают с трекером штаба так.
+
+### Issue tracker
+
+Задачи этого проекта — GitHub Issues в `VladPatr96/tts-overlay`. Все команды `gh` — с `-R VladPatr96/tts-overlay`. PRs as a request surface: no.
+
+- **Задача** — issue с категорией `bug` или `enhancement`; её заводит человек командой `/relay`. Сам задачу не создавай.
+- **Спецификация** (`/to-spec`, «publish to the issue tracker») — не новый issue, а тело задачи, из которой идёт работа: `node "D:/projects/my_projects/hq/skills/relay/scripts/relay.mjs" map <номер> --body <файл.md> --spec`: флаг ставит пометку спецификации, по ней relay подсказывает следующий шаг. Роль `needs-triage` у задачи меняется на `ready-for-agent`.
+- **Тикеты** (`/to-tickets`) — sub-issues задачи, без категории `bug`/`enhancement`: на доску и в таблицу задач не попадают.
+- **Wayfinding** (`/wayfinder`) — карта — сама задача: ставь на неё `wayfinder:map`, области — её sub-issues с `wayfinder:grilling|research|prototype|task`, блокировки — родные зависимости GitHub, захват — назначение исполнителя.
+- **Закрытие** — задачу (issue с категорией) сам не закрывай: её закрывает слияние PR человеком (`Closes #<номер>` в описании PR) или человек словом «принято» (`/relay принято`). Тикеты и области закрывать можно. Последний шаг `/implement-spec` — PR готов к ревью, а не закрытие задачи.
+- **Состояние** — меток состояния нет: назначен исполнитель — в работе; готовый к ревью PR или поле доски «На приёмке» — на приёмке; закрыт — Done.
+
+### Triage labels
+
+Стандартные роли, строки совпадают с именами: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` в корне репозитория, ADR — `docs/adr/`.
+<!-- hq:end -->
