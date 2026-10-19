@@ -1,0 +1,28 @@
+# runtime-состояние: пересоздаётся само
+cache/
+spool/
+*.log
+*.pid
+usage.json
+
+# конфиг с ключами — в репозиторий не попадает
+config.json
+*.env
+.env
+
+# тяжёлые бинарники и модели (качаются отдельно, см. README)
+piper/app/
+piper/voices/*.onnx
+silero/*.pt
+silero/*.onnx
+
+# служебное
+edge/paused.txt
+edge/voices.txt
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+.vs/
+.idea/
