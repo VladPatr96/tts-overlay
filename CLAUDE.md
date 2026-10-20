@@ -11,6 +11,7 @@
 | `lib-usage.ps1` | учёт затрат, баланс OpenRouter, курс ЦБ, строки затрат в интерфейсе (`Add-Usage`, `Update-CostLine`, `Refresh-Balance`, `Refresh-Rate`) |
 | `lib-providers.ps1` | движки (OpenRouter, Яндекс, Edge, Silero, SAPI, Piper): запросы, запуск воркеров, списки голосов, форматы, WAV-утилиты; ключ и подпись активного движка (`Get-ProviderKey`, `Get-ProviderLabel`) |
 | `lib-playback.ps1` | очередь кусков, кэш озвученного, воспроизведение: `Split-Text`, `Get-CachePath`, `Request-More`, `Try-Play-Next`, `Start-Speaking`, `Stop-Speaking`, `Toggle-Pause` |
+| `lib-input.ps1` | ввод: горячие клавиши (`Register-Hotkeys`), перехват выделенного (`Get-SelectedText`, `Speak-Selection`), буфер обмена (`Speak-Clipboard`, `Set-ClipboardText`) |
 | `lib-text.ps1` | подготовка текста перед синтезом: числа, даты, деньги, дроби, словарь произношения, сборка SSML |
 | `edge/edge-worker.py` | воркер Edge TTS: DRM-токен, параллельные попытки, mp3 → WAV |
 | `silero/silero-worker.py` | воркер Silero: модель в памяти, автоударения и «ё» |
