@@ -9,7 +9,7 @@
 | `tts-overlay.ps1` | главный скрипт: параметры, оверлей, хоткеи, перехват выделения, очередь кусков, кэш, счётчики затрат, панель `⚙`; подключает модули. Части выносятся в `lib-*.ps1` по [ADR 0001](docs/adr/0001-module-layout.md) |
 | `lib-core.ps1` | лог (`Write-Log`), конфиг (`Get-DefaultConfig`, `Import-Config`, `Save-Config`), ключ OpenRouter (`Get-ApiKey`) |
 | `lib-usage.ps1` | учёт затрат, баланс OpenRouter, курс ЦБ, строки затрат в интерфейсе (`Add-Usage`, `Update-CostLine`, `Refresh-Balance`, `Refresh-Rate`) |
-| `lib-providers.ps1` | движки (OpenRouter, Яндекс, Edge, Silero, SAPI, Piper): запросы, запуск воркеров, списки голосов, форматы, WAV-утилиты; ключ и подпись активного движка (`Get-ProviderKey`, `Get-ProviderLabel`) |
+| `lib-providers.ps1` | движки (OpenRouter, Яндекс, Edge, Silero, SAPI, Piper): карта движков `Get-ProviderMap`, запросы, воркеры, голоса, форматы, WAV-утилиты, `Invoke-ProviderFallback` |
 | `lib-playback.ps1` | очередь кусков, кэш озвученного, воспроизведение: `Split-Text`, `Get-CachePath`, `Request-More`, `Try-Play-Next`, `Start-Speaking`, `Stop-Speaking`, `Toggle-Pause` |
 | `lib-input.ps1` | ввод: горячие клавиши (`Register-Hotkeys`), перехват выделенного (`Get-SelectedText`, `Speak-Selection`), буфер обмена (`Speak-Clipboard`, `Set-ClipboardText`) |
 | `lib-stt.ps1` | диктовка: воркер распознавания, запись с микрофона, распознавание (OpenRouter или faster-whisper), результат в буфер (`Start-VoiceRecording`, `Start-VoiceRecognition`, `Update-VoiceState`) |
@@ -29,6 +29,7 @@
 - **Модели и бинарники** (`piper/app/`, `piper/voices/*.onnx`, `silero/*.pt`) — тоже не в git: они большие и лицензируются отдельно.
 - **Файлы в `edge/` кроме `edge-worker.py` — вендорские**: `drm.py`, `constants.py`, `exceptions.py` скопированы из [edge-tts](https://github.com/rany2/edge-tts) (LGPL-3.0), потому что опубликованный 7.2.7 отдаёт 403. Не править их без нужды, при правке — держать лицензию (`edge/LICENSE.edge-tts.txt`).
 - **Новые функции — в модуль своего слоя** (`lib-*.ps1`), а не в главный скрипт. Модуль — только функции; общее состояние (`$Cfg`, `$script:*`, окно) остаётся в главном скрипте. Новый модуль добавляется в список `foreach ($lib in …)` в начале `tts-overlay.ps1`.
+- **Различия движков — в карте `Get-ProviderMap`** (`lib-providers.ps1`), а не в проверках `if ($Cfg.provider -eq …)`. Новый движок — запись в карте + воркер (README, «Как добавить движок»). Сбой движка обрабатывает `Invoke-ProviderFallback`, копий этой логики не заводить.
 - **Пути в коде — относительные** (через `$Root` в PowerShell и `os.path.dirname(__file__)` в Python). Абсолютные пути живут только в `config.json`.
 - **Стиль PowerShell**: `$ErrorActionPreference = 'Stop'`, функции с `Verb-Noun`, логи через `Write-Log` в `tts-overlay.log`.
 - **Изменения в логике синтеза** проверяются на слух и по логу: `pwsh -File tts-overlay.ps1 -Say "проверка"`, затем смотреть `tts-overlay.log`.

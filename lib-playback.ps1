@@ -61,7 +61,8 @@ function Get-PronounceStamp {
     $Cfg.readNumbers, $Cfg.englishAsEnglish, $Cfg.sileroAccent, $Cfg.sileroYo,
     $Cfg.edgeRate, $Cfg.edgePitch
   )
-  if ($Cfg.provider -eq 'yandex') { $parts += @($Cfg.yandexSpeed, $Cfg.yandexEmotion) }
+  $stamp = (Get-ConfiguredProvider).StampParts
+  if ($stamp) { $parts += @(& $stamp) }
   $parts += ($script:Pronounce | ConvertTo-Json -Compress -Depth 4)
   $payload = $parts -join '|'
   $sha = [System.Security.Cryptography.SHA1]::Create()
@@ -71,7 +72,8 @@ function Get-PronounceStamp {
 function Get-CachePath([string]$Text) {
   # ключ: движок+голос, формат, настройки произношения и сам текст
   $who = Get-ProviderKey
-  if ($Cfg.provider -eq 'yandex') { $who += "|$($Cfg.yandexLang)" }
+  $extra = (Get-ConfiguredProvider).CacheParts
+  if ($extra) { $who += (& $extra) }
   $material = '{0}|{1}|{2}|{3}' -f $who, (Get-EffectiveFormat), (Get-PronounceStamp), $Text
   $sha  = [System.Security.Cryptography.SHA1]::Create()
   $hash = [BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($material))).Replace('-', '').ToLowerInvariant()
@@ -103,25 +105,10 @@ function Request-More {
     if (Test-Path $path) { $session.Files[$index] = $path; continue }
     # приводим текст к произносимому виду: числа словами + словарь произношения
     $speech = Convert-SpeechText $text $script:Pronounce ([bool]$Cfg.readNumbers)
-    if ($script:ActiveProvider -in @('piper', 'silero', 'edge', 'sapi')) {
+    $provider = Get-ActiveProvider
+    if ($provider.Start) {
       try {
-        if ($script:ActiveProvider -eq 'silero') {
-          $req = Start-SileroRequest $speech
-          $script:Pending.Add([pscustomobject]@{ Index = $index; Path = $path; Kind = 'silero'; Req = $req })
-        } elseif ($script:ActiveProvider -eq 'edge') {
-          $ssml = ConvertTo-Ssml -Text $speech -Pronounce $script:Pronounce -EnglishAsEnglish ([bool]$Cfg.englishAsEnglish)
-          $req = Start-EdgeRequest $ssml $true
-          $script:Pending.Add([pscustomobject]@{ Index = $index; Path = $path; Kind = 'file'; Req = $req; Requested = (Get-Date) })
-        } elseif ($script:ActiveProvider -eq 'sapi') {
-          $req = Start-SapiRequest $speech
-          $script:Pending.Add([pscustomobject]@{ Index = $index; Path = $path; Kind = 'file'; Req = $req; Requested = (Get-Date) })
-        } else {
-          $pipe = Start-LocalSynthesis $speech
-          $script:Pending.Add([pscustomobject]@{
-            Index = $index; Path = $path; Task = $pipe.Task; Kind = 'pipe'; Pipe = $pipe
-            SampleRate = (Get-LocalSampleRate)
-          })
-        }
+        $script:Pending.Add((& $provider.Start $speech $index $path))
         $preview = if ($speech.Length -gt 40) { $speech.Substring(0, 40) } else { $speech }
         Write-Log ("chunk {0} текст: {1}" -f $index, ($preview -replace '\s+', ' '))
         Add-Usage $speech

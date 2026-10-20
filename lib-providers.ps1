@@ -1,33 +1,209 @@
 # lib-providers.ps1 — движки синтеза (OpenRouter, Яндекс, Edge, Silero, SAPI, Piper): запросы, воркеры, голоса, форматы.
 # Подключается из tts-overlay.ps1 (dot-sourcing). Использует общее состояние главного скрипта: $Cfg, $Root, $script:ActiveProvider, $script:Http, $script:Models, воркеры ($script:EdgeWorker, $script:SileroWorker).
 
+# Карта движков: одна запись — один движок. Чтобы добавить движок, нужна запись здесь и воркер/запрос (см. README).
+# Поля записи:
+#   Title        — подпись в списке источников            Label/Source — подпись активного голоса (интерфейс/лог запуска)
+#   VoiceKey     — поле $Cfg с голосом                     UsageKey     — ключ счётчика затрат (если не «id|голос»)
+#   Voices       — блок: список голосов (нет — голоса у модели)   VoiceTitles — блок: имя → подпись (если голоса с подписями)
+#   Tooltip/Info — подсказка списка голосов / строка под ним      Kind         — http | file | pipe | silero
+#   Start        — блок запуска синтеза (для локальных: Speech, Index, Path → элемент очереди)
+#   Request      — блок запроса (для http)                 Format       — блок: формат файла в кэше
+#   WavFromRaw   — ответ — сырой PCM, заворачиваем в wav   Cost        — блок: стоимость куска (Chars → rub/usd)
+#   Currency     — rub | usd | '' (бесплатный)             Free/Local   — бесплатный / работает локально
+#   RussianOnly  — не читает английские слова              Fallbackable — при сбое можно озвучить запасным движком
+#   Ready        — блок: можно ли использовать (ключ есть)  HasModels    — есть список моделей OpenRouter
+#   Warmup       — блок: что поднять при старте            StampParts/CacheParts — что добавить в ключ кэша
+#   LineExtra/DetailsExtra — блоки: дописать строку/подробности затрат
+function Get-ProviderMap {
+  $map = [ordered]@{}
+  $map['yandex'] = @{
+    Title = 'Яндекс SpeechKit'
+    Label = { "Яндекс/$($Cfg.yandexVoice)" }
+    Source = { "яндекс/$($Cfg.yandexVoice)" }
+    VoiceKey = 'yandexVoice'
+    Voices = { @($script:YandexVoices.Keys) }
+    VoiceTitles = { $script:YandexVoices }
+    Tooltip = 'Голос Яндекс SpeechKit.'
+    Info = { "Яндекс SpeechKit · $($Cfg.yandexLang) · голос $($Cfg.yandexVoice)" }
+    Kind = 'http'
+    Request = { param($Text) New-YandexRequest $Text }
+    Format = { 'wav' }
+    WavFromRaw = $true
+    Cost = { param($Chars) @{ rub = ($Chars / 1000.0) * [double]$Cfg.yandexRubPer1kChars; usd = 0.0 } }
+    Currency = 'rub'
+    Free = $false; Local = $false; RussianOnly = $false; Fallbackable = $false
+    Ready = { [bool]$Cfg.yandexKey }
+    HasModels = $false
+    StampParts = { @($Cfg.yandexSpeed, $Cfg.yandexEmotion) }
+    CacheParts = { "|$($Cfg.yandexLang)" }
+    DetailsExtra = {
+      param($Entry, $Balance, $Rate)
+      if ([double]$Cfg.yandexBalanceStart -gt 0) {
+        $left = [double]$Cfg.yandexBalanceStart - ([double]$Entry.rub - [double]$Cfg.yandexSpentAtStart)
+        "Яндекс: осталось ≈ {0} (введено вручную {1})" -f (Format-Rub $left), (Format-Rub ([double]$Cfg.yandexBalanceStart))
+      }
+    }
+  }
+  $map['edge'] = @{
+    Title = 'Edge TTS (бесплатно)'
+    Label = { "Edge/$($Cfg.edgeVoice)" }
+    Source = { "edge/$($Cfg.edgeVoice)" }
+    VoiceKey = 'edgeVoice'
+    Voices = { @(Get-EdgeVoices) }
+    Tooltip = 'Локальный голос (работает без интернета).'
+    Info = { "Edge TTS · бесплатно · $($Cfg.edgeVoice)" }
+    Kind = 'file'
+    Start = {
+      param($Speech, $Index, $Path)
+      $ssml = ConvertTo-Ssml -Text $Speech -Pronounce $script:Pronounce -EnglishAsEnglish ([bool]$Cfg.englishAsEnglish)
+      $req = Start-EdgeRequest $ssml $true
+      [pscustomobject]@{ Index = $Index; Path = $Path; Kind = 'file'; Req = $req; Requested = (Get-Date) }
+    }
+    Format = { 'wav' }
+    Cost = { param($Chars) @{ rub = 0.0; usd = 0.0 } }
+    Currency = ''
+    Free = $true; Local = $false; RussianOnly = $false; Fallbackable = $true
+    Ready = { $true }
+    HasModels = $false
+    Warmup = { Start-EdgeWorker $true }
+  }
+  $map['silero'] = @{
+    Title = 'Silero (локально, бесплатно)'
+    Label = { "Silero/$($Cfg.sileroSpeaker)" }
+    Source = { "silero/$($Cfg.sileroSpeaker)" }
+    VoiceKey = 'sileroSpeaker'
+    Voices = { @('aidar', 'baya', 'kseniya', 'xenia', 'eugene') }
+    Tooltip = 'Локальный голос (работает без интернета).'
+    Info = { "Silero · локально · $($Cfg.sileroSpeaker)" }
+    Kind = 'silero'
+    Start = {
+      param($Speech, $Index, $Path)
+      $req = Start-SileroRequest $Speech
+      [pscustomobject]@{ Index = $Index; Path = $Path; Kind = 'silero'; Req = $req }
+    }
+    Format = { 'wav' }
+    Cost = { param($Chars) @{ rub = 0.0; usd = 0.0 } }
+    Currency = ''
+    Free = $true; Local = $true; RussianOnly = $true; Fallbackable = $true
+    Ready = { $true }
+    HasModels = $false
+    Warmup = { Start-SileroWorker $true }
+    DetailsExtra = { param($Entry, $Balance, $Rate) 'Silero: локальный синтез, интернет и оплата не нужны' }
+  }
+  $map['sapi'] = @{
+    Title = 'SAPI 5 (встроенный в Windows)'
+    Label = { "SAPI/$($Cfg.sapiVoice)" }
+    Source = { "sapi/$($Cfg.sapiVoice)" }
+    VoiceKey = 'sapiVoice'
+    Voices = { @(Get-SapiVoices) }
+    Tooltip = 'Локальный голос (работает без интернета).'
+    Info = { "SAPI 5 · встроенный голос · $($Cfg.sapiVoice)" }
+    Kind = 'file'
+    Start = {
+      param($Speech, $Index, $Path)
+      $req = Start-SapiRequest $Speech
+      [pscustomobject]@{ Index = $Index; Path = $Path; Kind = 'file'; Req = $req; Requested = (Get-Date) }
+    }
+    Format = { 'wav' }
+    Cost = { param($Chars) @{ rub = 0.0; usd = 0.0 } }
+    Currency = ''
+    Free = $true; Local = $false; RussianOnly = $false; Fallbackable = $true
+    Ready = { $true }
+    HasModels = $false
+  }
+  $map['piper'] = @{
+    Title = 'Piper (локально, бесплатно)'
+    Label = { "Piper/$($Cfg.piperVoice)" }
+    Source = { "piper/$($Cfg.piperVoice)" }
+    VoiceKey = 'piperVoice'
+    Voices = { @(Get-PiperVoices) }
+    Tooltip = 'Локальный голос (работает без интернета).'
+    Info = { "Piper · локально · $($Cfg.piperVoice)" }
+    Kind = 'pipe'
+    Start = {
+      param($Speech, $Index, $Path)
+      $pipe = Start-LocalSynthesis $Speech
+      [pscustomobject]@{
+        Index = $Index; Path = $Path; Task = $pipe.Task; Kind = 'pipe'; Pipe = $pipe
+        SampleRate = (Get-PiperSampleRate)
+      }
+    }
+    Format = { 'wav' }
+    Cost = { param($Chars) @{ rub = 0.0; usd = 0.0 } }
+    Currency = ''
+    Free = $true; Local = $true; RussianOnly = $true; Fallbackable = $true
+    Ready = { $true }
+    HasModels = $false
+    DetailsExtra = { param($Entry, $Balance, $Rate) 'Piper: локальный синтез, интернет и оплата не нужны' }
+  }
+  $map['openrouter'] = @{
+    Title = 'OpenRouter (модели)'
+    Label = { "OpenRouter/$($Cfg.model)" }
+    Source = { "$($Cfg.model)/$($Cfg.voice)" }
+    VoiceKey = 'voice'
+    UsageKey = { "openrouter|$($Cfg.model)|$($Cfg.voice)" }
+    Kind = 'http'
+    Request = { param($Text) New-OpenRouterRequest $Text }
+    Format = { if (Test-PcmModel $Cfg.model) { 'wav' } else { [string]$Cfg.format } }
+    Cost = { param($Chars) @{ rub = 0.0; usd = $Chars * (Get-ModelPricePerChar) } }
+    Currency = 'usd'
+    Free = $false; Local = $false; RussianOnly = $false; Fallbackable = $true
+    Ready = { $true }
+    HasModels = $true
+    Warmup = { Load-Models }
+    LineExtra = {
+      param($Balance, $Rate)
+      if ($Balance.at) { "   ·   остаток {0} (≈ {1})" -f (Format-UsdWhole ([double]$Balance.left)), (Format-Rub ([double]$Balance.left * $Rate)) }
+    }
+    DetailsExtra = {
+      param($Entry, $Balance, $Rate)
+      if ($Balance.at) {
+        "OpenRouter: осталось {0} из {1}, израсходовано {2} (обновлено {3})" -f (Format-UsdWhole ([double]$Balance.left)), (Format-UsdWhole ([double]$Balance.total)), (Format-UsdWhole ([double]$Balance.used)), $Balance.at
+      }
+    }
+  }
+  return $map
+}
+
+function Get-ActiveProvider { return $script:Providers[[string]$script:ActiveProvider] }
+
+function Get-ConfiguredProvider { return $script:Providers[[string]$Cfg.provider] }
+
+function Invoke-ProviderFallback($Item, [string]$Reason, [string]$FailStatus) {
+  # движок не ответил: озвучиваем кусок запасным (Яндекс), если он доступен и сам не сбойнул;
+  # иначе показываем $FailStatus и сбрасываем сессию
+  $fallback = $script:Providers[$script:FallbackProviderId]
+  if ((& $fallback.Ready) -and (Get-ActiveProvider).Fallbackable -and $Item.Req.Text) {
+    Set-Status 'Движок не ответил — озвучиваю через Яндекс'
+    Write-Log "fallback: $Reason, переключаюсь на Яндекс"
+    Start-Speaking $Item.Req.Text 'запасной (Яндекс)' $script:FallbackProviderId
+  } else {
+    Set-Status $FailStatus
+    $script:Session = $null
+  }
+}
+
 function Get-ProviderKey {
   # ключ счётчика: только он и показывается в интерфейсе
-  if ($script:ActiveProvider -eq 'yandex') { return "yandex|$($Cfg.yandexVoice)" }
-  if ($script:ActiveProvider -eq 'piper') { return "piper|$($Cfg.piperVoice)" }
-  if ($script:ActiveProvider -eq 'silero') { return "silero|$($Cfg.sileroSpeaker)" }
-  if ($script:ActiveProvider -eq 'edge') { return "edge|$($Cfg.edgeVoice)" }
-  if ($script:ActiveProvider -eq 'sapi') { return "sapi|$($Cfg.sapiVoice)" }
-  return "openrouter|$($Cfg.model)|$($Cfg.voice)"
+  $provider = Get-ActiveProvider
+  if ($provider.UsageKey) { return (& $provider.UsageKey) }
+  return "$($script:ActiveProvider)|$($Cfg.($provider.VoiceKey))"
 }
 
 function Get-ProviderLabel {
-  $label = if ($script:ActiveProvider -eq 'yandex') { "Яндекс/$($Cfg.yandexVoice)" }
-           elseif ($script:ActiveProvider -eq 'piper') { "Piper/$($Cfg.piperVoice)" }
-           elseif ($script:ActiveProvider -eq 'silero') { "Silero/$($Cfg.sileroSpeaker)" }
-           elseif ($script:ActiveProvider -eq 'edge') { "Edge/$($Cfg.edgeVoice)" }
-           elseif ($script:ActiveProvider -eq 'sapi') { "SAPI/$($Cfg.sapiVoice)" }
-           else { "OpenRouter/$($Cfg.model)" }
+  $label = & (Get-ActiveProvider).Label
   if ($script:ActiveProvider -ne [string]$Cfg.provider) { $label += ' (запасной)' }
   return $label
 }
 
 function Resolve-Provider([string]$Text) {
   # локальные русские модели не умеют читать английские слова — если в тексте
-  # есть латиница, озвучиваем через Яндекс
+  # есть латиница, озвучиваем через запасной движок (Яндекс)
   $script:ActiveProvider = [string]$Cfg.provider
-  if ($script:ActiveProvider -in @('silero', 'piper') -and $Cfg.fallbackToYandex -and $Cfg.yandexKey -and ($Text -match '[A-Za-z]')) {
-    $script:ActiveProvider = 'yandex'
+  $fallback = $script:Providers[$script:FallbackProviderId]
+  if ((Get-ActiveProvider).RussianOnly -and $Cfg.fallbackToYandex -and (& $fallback.Ready) -and ($Text -match '[A-Za-z]')) {
+    $script:ActiveProvider = $script:FallbackProviderId
     Write-Log 'fallback: в тексте есть английские слова — озвучиваю через Яндекс'
     return $true
   }
@@ -42,9 +218,7 @@ function Test-PcmModel([string]$ModelId) {
 function Get-EffectiveFormat {
   # Яндексу заказываем несжатый звук: в него легко добавить тишину в начале,
   # которую «съедает» прогрев плеера, и речь не теряет первые слова
-  if ($Cfg.provider -in @('yandex', 'piper', 'silero', 'edge', 'sapi')) { return 'wav' }
-  if ($Cfg.provider -eq 'openrouter' -and (Test-PcmModel $Cfg.model)) { return 'wav' }
-  return [string]$Cfg.format
+  return (& (Get-ConfiguredProvider).Format)
 }
 
 function Get-PiperVoices {
@@ -162,13 +336,6 @@ function Start-EdgeWorker([bool]$Quiet = $false) {
   }
 }
 
-function Get-LocalVoices {
-  if ($script:ActiveProvider -eq 'silero') { return @('aidar', 'baya', 'kseniya', 'xenia', 'eugene') }
-  if ($script:ActiveProvider -eq 'edge') { return @(Get-EdgeVoices) }
-  if ($script:ActiveProvider -eq 'sapi') { return @(Get-SapiVoices) }
-  return @(Get-PiperVoices)
-}
-
 function Get-PiperSampleRate {
   $cfgPath = Join-Path $Cfg.piperVoicesDir "$($Cfg.piperVoice).onnx.json"
   try {
@@ -177,13 +344,7 @@ function Get-PiperSampleRate {
   } catch { return 22050 }
 }
 
-function Get-LocalSampleRate {
-  if ($script:ActiveProvider -eq 'silero') { return 48000 }
-  return (Get-PiperSampleRate)
-}
-
 function Start-LocalSynthesis([string]$Text) {
-  if ($script:ActiveProvider -eq 'silero') { return Start-SileroRequest $Text }
   $info = [System.Diagnostics.ProcessStartInfo]::new()
   $model = Join-Path $Cfg.piperVoicesDir "$($Cfg.piperVoice).onnx"
   $info.FileName = $Cfg.piperExe
@@ -275,28 +436,32 @@ function ConvertTo-WavFile {
 }
 
 function New-TtsRequest([string]$Text) {
-  if ($script:ActiveProvider -eq 'yandex') {
-    if (-not $Cfg.yandexKey) { throw 'не задан ключ Яндекс SpeechKit (поле yandexKey в config.json)' }
-    $form = [ordered]@{
-      text           = $Text
-      lang           = $Cfg.yandexLang
-      voice          = $Cfg.yandexVoice
-      format         = 'lpcm'
-      sampleRateHertz = 48000
-    }
-    $speed = [double]$Cfg.yandexSpeed
-    if ($speed -gt 0 -and [Math]::Abs($speed - 1.0) -gt 0.01) { $form.speed = ([string]$speed).Replace(',', '.') }
-    if ($Cfg.yandexEmotion -and -not $script:YandexSkipEmotion) { $form.emotion = [string]$Cfg.yandexEmotion }
-    $pairs = [System.Collections.Generic.List[System.Collections.Generic.KeyValuePair[string, string]]]::new()
-    foreach ($name in $form.Keys) {
-      $pairs.Add([System.Collections.Generic.KeyValuePair[string, string]]::new($name, [string]$form[$name]))
-    }
-    $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, $YandexTtsUrl)
-    $request.Content = [System.Net.Http.FormUrlEncodedContent]::new($pairs)
-    [void]$request.Headers.TryAddWithoutValidation('Authorization', "Api-Key $($Cfg.yandexKey)")
-    return $request
-  }
+  return (& (Get-ActiveProvider).Request $Text)
+}
 
+function New-YandexRequest([string]$Text) {
+  if (-not $Cfg.yandexKey) { throw 'не задан ключ Яндекс SpeechKit (поле yandexKey в config.json)' }
+  $form = [ordered]@{
+    text           = $Text
+    lang           = $Cfg.yandexLang
+    voice          = $Cfg.yandexVoice
+    format         = 'lpcm'
+    sampleRateHertz = 48000
+  }
+  $speed = [double]$Cfg.yandexSpeed
+  if ($speed -gt 0 -and [Math]::Abs($speed - 1.0) -gt 0.01) { $form.speed = ([string]$speed).Replace(',', '.') }
+  if ($Cfg.yandexEmotion -and -not $script:YandexSkipEmotion) { $form.emotion = [string]$Cfg.yandexEmotion }
+  $pairs = [System.Collections.Generic.List[System.Collections.Generic.KeyValuePair[string, string]]]::new()
+  foreach ($name in $form.Keys) {
+    $pairs.Add([System.Collections.Generic.KeyValuePair[string, string]]::new($name, [string]$form[$name]))
+  }
+  $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, $YandexTtsUrl)
+  $request.Content = [System.Net.Http.FormUrlEncodedContent]::new($pairs)
+  [void]$request.Headers.TryAddWithoutValidation('Authorization', "Api-Key $($Cfg.yandexKey)")
+  return $request
+}
+
+function New-OpenRouterRequest([string]$Text) {
   $payload = [ordered]@{ model = $Cfg.model; input = $Text; response_format = $Cfg.format }
   if (Test-PcmModel $Cfg.model) { $payload.response_format = 'pcm' }
   if ($Cfg.voice) { $payload.voice = $Cfg.voice }
