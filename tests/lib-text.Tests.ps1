@@ -83,6 +83,26 @@ Describe 'Convert-SpeechText: сотни в годах' {
   }
 }
 
+Describe 'Convert-SpeechText: годы с круглой тысячей' {
+  $cases = @(
+    @{ y = 1000; w = 'тысячного' }, @{ y = 2000; w = 'двухтысячного' }, @{ y = 3000; w = 'трёхтысячного' },
+    @{ y = 4000; w = 'четырёхтысячного' }, @{ y = 5000; w = 'пятитысячного' }, @{ y = 6000; w = 'шеститысячного' },
+    @{ y = 7000; w = 'семитысячного' }, @{ y = 8000; w = 'восьмитысячного' }, @{ y = 9000; w = 'девятитысячного' }
+  )
+  foreach ($c in $cases) {
+    It "$($c.y) — $($c.w) года" {
+      Convert-SpeechText "01.01.$($c.y)" $null $true | Should Be "первого января $($c.w) года"
+    }
+  }
+  It 'остальные годы не меняются' {
+    Convert-SpeechText '01.01.2001' $null $true | Should Be 'первого января две тысячи первого года'
+    Convert-SpeechText '01.01.2100' $null $true | Should Be 'первого января две тысячи сотого года'
+    Convert-SpeechText '01.01.1900' $null $true | Should Be 'первого января тысяча девятисотого года'
+    Convert-SpeechText '01.01.2020' $null $true | Should Be 'первого января две тысячи двадцатого года'
+    Convert-SpeechText '01.01.2026' $null $true | Should Be 'первого января две тысячи двадцать шестого года'
+  }
+}
+
 Describe 'Convert-SpeechText: суммы с пробелом-разделителем' {
   It '22 000 рублей' { Convert-SpeechText '22 000 рублей' $null $true | Should Be 'двадцать две тысячи рублей' }
   It '1 500 рублей' { Convert-SpeechText '1 500 рублей' $null $true | Should Be 'тысяча пятьсот рублей' }

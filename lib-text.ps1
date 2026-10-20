@@ -23,6 +23,8 @@ $script:OnesGenitive = @('нулевого','первого','второго','�
                          'десятого','одиннадцатого','двенадцатого','тринадцатого','четырнадцатого','пятнадцатого',
                          'шестнадцатого','семнадцатого','восемнадцатого','девятнадцатого')
 $script:TensGenitive = @{ 20='двадцатого';30='тридцатого';40='сорокового';50='пятидесятого';60='шестидесятого';70='семидесятого';80='восьмидесятого';90='девяностого' }
+# круглая тысяча в годе: 2000 → «двухтысячного» (индекс — число тысяч)
+$script:ThousandsOrdinal = @('','тысячного','двухтысячного','трёхтысячного','четырёхтысячного','пятитысячного','шеститысячного','семитысячного','восьмитысячного','девятитысячного')
 $script:HundredsOrdinal = @('сотого','двухсотого','трёхсотого','четырёхсотого','пятисотого','шестисотого','семисотого','восьмисотого','девятисотого')
 
 function Convert-ScaleToWords([int]$Count, [string]$One, [string]$Few, [string]$Many, [scriptblock]$Words = $null) {
@@ -81,6 +83,9 @@ function Convert-YearToWords([int]$year) {
   $year = $year % 1000000
   $thousands = [Math]::Floor($year / 1000)
   $rest = $year % 1000
+  if ($millions -eq 0 -and $rest -eq 0 -and $thousands -ge 1 -and $thousands -le 9) {
+    return ($script:ThousandsOrdinal[$thousands] + ' года')
+  }
   $parts = @(Get-ScaleParts $millions $thousands)
   if ($rest -gt 0) {
     if ($rest -ge 100) {
