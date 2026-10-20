@@ -35,8 +35,8 @@ foreach ($p in $stray) {
   $stopped += $p.ProcessId
 }
 
-# 3. локальные воркеры синтеза (silero/edge) — они живут отдельными процессами
-foreach ($pattern in 'silero-worker.py', 'edge-worker.py') {
+# 3. локальные воркеры синтеза и распознавания (silero/edge/stt) — они живут отдельными процессами
+foreach ($pattern in 'silero-worker.py', 'edge-worker.py', 'stt-worker.py') {
   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object {
     $_.CommandLine -and $_.CommandLine -like "*$pattern*"
   } | ForEach-Object {

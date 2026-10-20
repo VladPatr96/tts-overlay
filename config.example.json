@@ -36,5 +36,14 @@
   "speakSelectionHotkey": "Ctrl+Alt+S",
   "speakClipboardHotkey": "Ctrl+Alt+D",
   "stopHotkey": "Ctrl+Alt+X",
+  "sttProvider": "openrouter",
+  "sttModel": "google/gemini-3.5-flash-lite",
+  "sttWhisperModel": "base",
+  "sttLang": "ru",
+  "sttHotkey": "Ctrl+Alt+V",
+  "sttMaxSeconds": 60,
+  "sttSampleRate": 16000,
+  "sttWorkerScript": "stt\\stt-worker.py",
+  "sttPrompt": "Расшифруй аудио на русском языке. Выведи только расшифровку, без пояснений.",
   "window": { "left": null, "top": null }
 }
