@@ -12,6 +12,21 @@ Describe 'Convert-SpeechText: числа' {
   It 'не трогает числа при выключенном чтении' { Convert-SpeechText '1500' $null $false | Should Be '1500' }
 }
 
+Describe 'Convert-SpeechText: тысячи в женском роде' {
+  It '2000 — две тысячи' { Convert-SpeechText '2000 рублей' $null $true | Should Be 'две тысячи рублей' }
+  It '22000 — двадцать две тысячи' { Convert-SpeechText '22000 рублей' $null $true | Should Be 'двадцать две тысячи рублей' }
+  It '21000 — двадцать одна тысяча' { Convert-SpeechText '21000 руб' $null $true | Should Be 'двадцать одна тысяча рублей' }
+  It '102000 — сто две тысячи' { Convert-SpeechText '102000 рублей' $null $true | Should Be 'сто две тысячи рублей' }
+  It '12000 — двенадцать тысяч (не «две»)' { Convert-SpeechText '12000 рублей' $null $true | Should Be 'двенадцать тысяч рублей' }
+  It 'число с пробелами: 22 000' { Convert-SpeechText '22 000 человек' $null $true | Should Be 'двадцать две тысячи человек' }
+  It '5000 и 1000 не меняются' {
+    Convert-SpeechText '5000 рублей' $null $true | Should Be 'пять тысяч рублей'
+    Convert-SpeechText '1000 рублей' $null $true | Should Be 'тысяча рублей'
+  }
+  It 'тысячи вместе с остатком' { Convert-SpeechText '2002 рубля' $null $true | Should Be 'две тысячи два рубля' }
+  It 'миллионы остаются в мужском роде' { Convert-SpeechText '2000000 рублей' $null $true | Should Be 'два миллиона рублей' }
+}
+
 Describe 'Convert-SpeechText: версии не читаются как даты' {
   It 'Python 3.11' { Convert-SpeechText 'Python 3.11' $null $true | Should Be 'Python три точка одиннадцать' }
   It 'версия 1.2.3' { Convert-SpeechText 'версия 1.2.3' $null $true | Should Be 'версия один точка два точка три' }
