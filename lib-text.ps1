@@ -23,7 +23,7 @@ $script:OnesGenitive = @('нулевого','первого','второго','�
                          'десятого','одиннадцатого','двенадцатого','тринадцатого','четырнадцатого','пятнадцатого',
                          'шестнадцатого','семнадцатого','восемнадцатого','девятнадцатого')
 $script:TensGenitive = @{ 20='двадцатого';30='тридцатого';40='сорокового';50='пятидесятого';60='шестидесятого';70='семидесятого';80='восьмидесятого';90='девяностого' }
-$script:HundredsGenitive =@('ста','двухсот','трёхсот','четырёхсот','пятисот','шестисот','семисот','восьмисот','девятисот')
+$script:HundredsOrdinal = @('сотого','двухсотого','трёхсотого','четырёхсотого','пятисотого','шестисотого','семисотого','восьмисотого','девятисотого')
 
 function Convert-ScaleToWords([int]$Count, [string]$One, [string]$Few, [string]$Many, [scriptblock]$Words = $null) {
   # «два миллиона», «пять тысяч»; единица — просто «миллион»/«тысяча»
@@ -85,9 +85,14 @@ function Convert-YearToWords([int]$year) {
   if ($rest -gt 0) {
     if ($rest -ge 100) {
       $h = [Math]::Floor($rest / 100)
-      $parts += $script:HundredsGenitive[$h - 1]
       $r = $rest % 100
-      if ($r -gt 0) { $parts += (Convert-RemainderGenitive $r) }
+      if ($r -gt 0) {
+        # сотни стоят перед последней частью года — именительный падеж, порядковой будет остаток
+        $parts += $script:Hundreds[$h - 1]
+        $parts += (Convert-RemainderGenitive $r)
+      } else {
+        $parts += $script:HundredsOrdinal[$h - 1]
+      }
     } else {
       $parts += (Convert-RemainderGenitive $rest)
     }
