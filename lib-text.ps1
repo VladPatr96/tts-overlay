@@ -18,7 +18,6 @@ $script:Ones = @('ноль','один','два','три','четыре','пят�
                  'шестнадцать','семнадцать','восемнадцать','девятнадцать')
 $script:Tens = @{ 20='двадцать';30='тридцать';40='сорок';50='пятьдесят';60='шестьдесят';70='семьдесят';80='восемьдесят';90='девяносто' }
 $script:Hundreds = @('сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот')
-$script:OnesFeminine = @('','одна','две','три','четыре','пять','шесть','семь','восемь','девять')
 # родительный падеж (даты, годы)
 $script:OnesGenitive = @('нулевого','первого','второго','третьего','четвёртого','пятого','шестого','седьмого','восьмого','девятого',
                          'десятого','одиннадцатого','двенадцатого','тринадцатого','четырнадцатого','пятнадцатого',
@@ -32,11 +31,21 @@ function Convert-ScaleToWords([int]$Count, [string]$One, [string]$Few, [string]$
   return $text + ' ' + (Get-WordForm $Count $One $Few $Many)
 }
 
-function Get-ScaleParts([int]$Millions, [int]$Thousands, [scriptblock]$ThousandsWords = $null) {
+function Convert-ThousandsCountToWords([int]$Count) {
+  # «тысяча» — женского рода: 2 → «две», 21 → «двадцать одна», 22 → «двадцать две» (а 11 и 12 — как обычно)
+  $text = Convert-NumberToWords $Count
+  $mod10 = $Count % 10
+  $mod100 = $Count % 100
+  if ($mod10 -eq 1 -and $mod100 -ne 11) { return ($text -replace 'один$', 'одна') }
+  if ($mod10 -eq 2 -and $mod100 -ne 12) { return ($text -replace 'два$', 'две') }
+  return $text
+}
+
+function Get-ScaleParts([int]$Millions, [int]$Thousands) {
   # слова для миллионов и тысяч числа (пустой массив, если их нет)
   $parts = @()
   if ($Millions -gt 0) { $parts += Convert-ScaleToWords $Millions 'миллион' 'миллиона' 'миллионов' }
-  if ($Thousands -gt 0) { $parts += Convert-ScaleToWords $Thousands 'тысяча' 'тысячи' 'тысяч' $ThousandsWords }
+  if ($Thousands -gt 0) { $parts += Convert-ScaleToWords $Thousands 'тысяча' 'тысячи' 'тысяч' ${function:Convert-ThousandsCountToWords} }
   return $parts
 }
 
@@ -71,7 +80,7 @@ function Convert-YearToWords([int]$year) {
   $year = $year % 1000000
   $thousands = [Math]::Floor($year / 1000)
   $rest = $year % 1000
-  $parts = @(Get-ScaleParts $millions $thousands { param($n) $script:OnesFeminine[$n] })
+  $parts = @(Get-ScaleParts $millions $thousands)
   if ($rest -gt 0) {
     if ($rest -ge 100) {
       $h = [Math]::Floor($rest / 100)
