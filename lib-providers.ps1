@@ -500,3 +500,24 @@ function Get-VoiceFallback([string]$ModelId) {
   if ($ModelId -like 'fish-audio/*') { return @('alloy') }
   return @()
 }
+
+function Receive-ModelList {
+  if ($script:ModelTask -and $script:ModelTask.IsCompleted) {
+    $task = $script:ModelTask
+    $script:ModelTask = $null
+    try {
+      $response = $task.Result
+      if ($response.IsSuccessStatusCode) {
+        $json = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        $parsed = $json | ConvertFrom-Json
+        $script:Models = @($parsed.data | Sort-Object { if ($_.pricing -and [double]$_.pricing.prompt -eq 0) { 0 } else { 1 } }, name)
+        Apply-Models
+        Set-Status 'Список моделей обновлён'
+      } else {
+        Set-Status "Список не загрузился: HTTP $([int]$response.StatusCode)"
+      }
+    } catch {
+      Set-Status "Список не загрузился: $($_.Exception.Message)"
+    }
+  }
+}

@@ -172,3 +172,61 @@ function Refresh-Rate {
     $script:RateTask = $script:Http.SendAsync($request)
   } catch { Write-Log "rate: $($_.Exception.Message)" }
 }
+
+function Receive-BalanceResult {
+  if ($script:BalanceTask -and $script:BalanceTask.IsCompleted) {
+    $task = $script:BalanceTask
+    $script:BalanceTask = $null
+    try {
+      $response = $task.Result
+      if ($response.IsSuccessStatusCode) {
+        $parsed = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+        $balance = $script:Usage.balance.openrouter
+        $balance.total = [double]$parsed.data.total_credits
+        $balance.used  = [double]$parsed.data.total_usage
+        $balance.left  = [double]$parsed.data.total_credits - [double]$parsed.data.total_usage
+        $balance.at    = Get-Date -Format 'dd.MM HH:mm'
+        Save-Usage
+        Update-CostLine
+      }
+    } catch { Write-Log "balance: ошибка $($_.Exception.Message)" }
+  }
+}
+
+function Receive-RateResult {
+  if ($script:RateTask -and $script:RateTask.IsCompleted) {
+    $task = $script:RateTask
+    $script:RateTask = $null
+    try {
+      $response = $task.Result
+      if ($response.IsSuccessStatusCode) {
+        $parsed = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+        $usd = $parsed.Valute.USD
+        if (-not $usd) {
+          $usd = @($parsed.Valute.PSObject.Properties.Value) | Where-Object { $_.CharCode -eq 'USD' } | Select-Object -First 1
+        }
+        if ($usd) {
+          $script:Usage.rate.usdRub = [double]$usd.Value
+          try {
+            $rateDate = $parsed.Date
+            if ($rateDate -is [datetime]) { $script:Usage.rate.date = $rateDate.ToString('dd.MM.yyyy') }
+            else { $script:Usage.rate.date = (Get-Date ([string]$rateDate)).ToString('dd.MM.yyyy') }
+          } catch { $script:Usage.rate.date = [string]$parsed.Date }
+          $script:Usage.rate.isoDate = Get-Date -Format 'yyyy-MM-dd'
+          Save-Usage
+          Update-CostLine
+        } else {
+          Write-Log 'rate: в ответе ЦБ нет USD'
+        }
+      }
+    } catch { Write-Log "rate: ошибка $($_.Exception.Message)" }
+  }
+}
+
+function Update-UsageRefresh {
+  if (-not $script:NextBalanceAt -or (Get-Date) -gt $script:NextBalanceAt) {
+    $script:NextBalanceAt = (Get-Date).AddMinutes(10)
+    Refresh-Balance
+    if ($script:Usage.rate.isoDate -ne (Get-Date -Format 'yyyy-MM-dd')) { Refresh-Rate }
+  }
+}

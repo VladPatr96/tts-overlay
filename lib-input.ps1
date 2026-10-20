@@ -166,3 +166,19 @@ function Set-ClipboardText([string]$Text) {
   }
   return $false
 }
+
+function Invoke-QueuedInput {
+  if ($script:QueueSelection -and [DateTime]::UtcNow -ge $script:QueueSelection) {
+    $script:QueueSelection = $null
+    Speak-Selection
+  }
+  if ($script:QueueClipboard -and [DateTime]::UtcNow -ge $script:QueueClipboard) {
+    $script:QueueClipboard = $null
+    Speak-Clipboard
+  }
+}
+
+function Update-LastForeground {
+  $foreground = [TtsHotkey]::GetForegroundWindow()
+  if ($foreground -ne [IntPtr]::Zero -and $foreground -ne $script:Hwnd) { $script:LastForeground = $foreground }
+}

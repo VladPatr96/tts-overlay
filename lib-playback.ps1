@@ -198,3 +198,167 @@ function Toggle-Pause {
     Set-Status ("Озвучиваю… {0}/{1}" -f ($script:Session.Played + 1), $script:Session.Chunks.Count)
   }
 }
+
+function Start-PendingPlay {
+  if ($script:PendingPlay -and $script:PendingPlayAt -and ((Get-Date) - $script:PendingPlayAt).TotalMilliseconds -gt 1500) {
+    $script:PendingPlay = $null
+    try {
+      $script:Player.Position = [TimeSpan]::Zero
+      $script:Player.Play()
+      Write-Log 'play started (fallback)'
+    } catch { Write-Log "play fallback error: $($_.Exception.Message)" }
+  }
+}
+
+function Remove-StaleSynthFiles {
+  # подчищаем осиротевшие временные файлы синтеза
+  if (-not $script:NextSweepAt -or (Get-Date) -gt $script:NextSweepAt) {
+    $script:NextSweepAt = (Get-Date).AddMinutes(5)
+    try {
+      Get-ChildItem $CacheDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(edge|silero|sapi|voice)-' -and $_.LastWriteTime -lt (Get-Date).AddMinutes(-3) } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    } catch { }
+  }
+}
+
+function Read-SpoolQueue {
+  try {
+    $spooled = Get-ChildItem $SpoolDir -Filter '*.txt' -File | Sort-Object Name | Select-Object -First 1
+    if ($spooled) {
+      $content = [System.IO.File]::ReadAllText($spooled.FullName)
+      Remove-Item $spooled.FullName -Force -ErrorAction SilentlyContinue
+      if ($spooled.Name -match '-stop-') { Stop-Speaking }
+      elseif ($content.Trim()) { Start-Speaking $content 'spool' }
+    }
+  } catch { }
+}
+
+function Complete-FileItem($item) {
+  $outFile = $item.Req.OutFile
+  # если синтез идёт в отдельном процессе — дожидаемся его выхода,
+  # иначе файл ещё не дописан
+  $hasProc = $false
+  if ($item.Req -is [System.Collections.IDictionary]) { $hasProc = $item.Req.Contains('Proc') }
+  else { $hasProc = ($item.Req.PSObject.Properties.Name -contains 'Proc') }
+  if ($hasProc -and -not $item.Req.Proc.HasExited) { return }
+  if (-not (Test-Path $outFile)) {
+    # воркер сам сообщил об ошибке — не ждём таймаут
+    $errFile = $null
+    if ($item.Req -is [System.Collections.IDictionary]) { $errFile = $item.Req['ErrFile'] }
+    else { $errFile = $item.Req.PSObject.Properties['ErrFile'].Value }
+    if ($errFile -and (Test-Path $errFile)) {
+      $script:Pending.Remove($item)
+      $why = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
+      Remove-Item $errFile, $item.Req.RequestFile -Force -ErrorAction SilentlyContinue
+      Write-Log "file: ошибка воркера — $why"
+      Invoke-ProviderFallback $item 'воркер вернул ошибку' "Движок не ответил: $why"
+      return
+    }
+    # ждём файл, но не бесконечно
+    if (((Get-Date) - $item.Requested).TotalSeconds -gt 40) {
+      $script:Pending.Remove($item)
+      Remove-Item $outFile, $item.Req.RequestFile -Force -ErrorAction SilentlyContinue
+      Write-Log 'file: синтез не ответил'
+      Invoke-ProviderFallback $item 'синтез не уложился в 40 секунд' 'Синтез не ответил за 40 секунд'
+    }
+    return
+  }
+  $script:Pending.Remove($item)
+  try {
+    Convert-WavToStandard $outFile $item.Path 0.5
+    Remove-Item $outFile, $item.Req.RequestFile -Force -ErrorAction SilentlyContinue
+    if ($script:Session) { $script:Session.Files[$item.Index] = $item.Path }
+    Write-Log "chunk $($item.Index): $((Get-Item $item.Path).Length) байт ($($script:ActiveProvider))"
+    Try-Play-Next
+  } catch {
+    Write-Log "file error: $($_.Exception.Message)"
+    Invoke-ProviderFallback $item 'синтез не удался' "Ошибка разбора звука: $($_.Exception.Message)"
+  }
+}
+
+function Complete-SileroItem($item) {
+  if (-not (Test-Path $item.Req.PcmFile)) { return }
+  $script:Pending.Remove($item)
+  try {
+    $bytes = [System.IO.File]::ReadAllBytes($item.Req.PcmFile)
+    Remove-Item $item.Req.PcmFile, $item.Req.RequestFile -Force -ErrorAction SilentlyContinue
+    if ($bytes.Length -lt 100) { throw 'пустой ответ Silero' }
+    ConvertTo-WavFile -Pcm $bytes -Path $item.Path -SampleRate 48000
+    if ($script:Session) { $script:Session.Files[$item.Index] = $item.Path }
+    Write-Log "chunk $($item.Index): $($bytes.Length) байт (silero, $($Cfg.sileroSpeaker))"
+    Try-Play-Next
+  } catch {
+    Write-Log "silero error: $($_.Exception.Message)"
+    Invoke-ProviderFallback $item 'синтез не удался' "Ошибка Silero: $($_.Exception.Message)"
+  }
+}
+
+function Complete-TaskItem($item) {
+  if (-not $item.Task.IsCompleted) { return }
+  $script:Pending.Remove($item)
+  try {
+    if ($item.Kind -eq 'pipe') {
+      $bytes = $item.Pipe.Stream.ToArray()
+      try { [void]$item.Pipe.Process.WaitForExit(5000) } catch { }
+      ConvertTo-WavFile -Pcm $bytes -Path $item.Path -SampleRate $item.SampleRate
+      if ($script:Session) { $script:Session.Files[$item.Index] = $item.Path }
+      Write-Log "chunk $($item.Index): $($bytes.Length) байт (piper, $($Cfg.piperVoice))"
+      Try-Play-Next
+      return
+    }
+    $response = $item.Task.Result
+    if ($response.IsSuccessStatusCode) {
+      $bytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+      # сервер может отдать несжатый звук: заворачиваем в wav по заголовку ответа
+      $contentType = [string]$response.Content.Headers.ContentType
+      if ($contentType -match 'pcm') {
+        $rate = 48000
+        if ($contentType -match 'rate=(\d+)') { $rate = [int]$Matches[1] }
+        ConvertTo-WavFile -Pcm $bytes -Path $item.Path -SampleRate $rate
+        Write-Log "chunk $($item.Index): $($bytes.Length) байт pcm ${rate} Гц -> wav"
+      } elseif ((Get-ActiveProvider).WavFromRaw) {
+        ConvertTo-WavFile -Pcm $bytes -Path $item.Path
+      } else {
+        [System.IO.File]::WriteAllBytes($item.Path, $bytes)
+      }
+      if ($script:Session) { $script:Session.Files[$item.Index] = $item.Path }
+      Write-Log "chunk $($item.Index): $($bytes.Length) байт"
+      Try-Play-Next
+    } else {
+      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      $message = Get-ErrorMessage $body
+      # голос не знает такой роли эмоции — повторяем без неё
+      if ($body -match 'role' -and $Cfg.yandexEmotion -and -not $script:YandexSkipEmotion) {
+        $script:YandexSkipEmotion = $true
+        Write-Log "yandex: голос не поддерживает эмоцию '$($Cfg.yandexEmotion)' — повторяю без неё"
+        try {
+          $retry = $script:Http.SendAsync((New-TtsRequest $item.Text))
+          $script:Pending.Add([pscustomobject]@{ Index = $item.Index; Path = $item.Path; Task = $retry; Text = $item.Text })
+          return
+        } catch { }
+      }
+      Set-Status "Ошибка TTS: $message"
+      Write-Log "tts error $([int]$response.StatusCode): $body"
+      $script:Session = $null
+      $script:Pending.Clear()
+    }
+  } catch {
+    Set-Status "Ошибка TTS: $($_.Exception.Message)"
+    Write-Log "tts exception: $($_.Exception.Message)"
+    $script:Session = $null
+    $script:Pending.Clear()
+  }
+}
+
+function Complete-PendingItem($item) {
+  switch ($item.Kind) {
+    'file'   { Complete-FileItem $item }
+    'silero' { Complete-SileroItem $item }
+    default  { Complete-TaskItem $item }
+  }
+}
+
+function Update-PendingQueue {
+  foreach ($item in @($script:Pending)) { Complete-PendingItem $item }
+}
