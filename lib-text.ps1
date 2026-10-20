@@ -108,7 +108,9 @@ function Convert-DayToGenitive([int]$day) {
   # 12 -> "двенадцатого" (родительный падеж, как в датах)
   if ($day -le 19) { return $script:OnesGenitive[$day] }
   if ($day -eq 20) { return 'двадцатого' }
-  if ($day -le 31) { return 'тридцать ' + $script:OnesGenitive[(($day - 21) % 10) + 1] }
+  if ($day -le 29) { return 'двадцать ' + $script:OnesGenitive[$day - 20] }
+  if ($day -eq 30) { return 'тридцатого' }
+  if ($day -eq 31) { return 'тридцать первого' }
   return (Convert-NumberToWords $day)
 }
 
