@@ -51,15 +51,7 @@ function Get-ModelPricePerChar {
 }
 
 function Get-CostEstimate([int]$Chars) {
-  $rub = 0.0
-  $usd = 0.0
-  if ($script:ActiveProvider -eq 'yandex') {
-    $rub = ($Chars / 1000.0) * [double]$Cfg.yandexRubPer1kChars
-  } elseif ($script:ActiveProvider -eq 'openrouter') {
-    $usd = $Chars * (Get-ModelPricePerChar)
-  }
-  # piper — локально и бесплатно
-  return @{ rub = $rub; usd = $usd }
+  return (& (Get-ActiveProvider).Cost $Chars)
 }
 
 function Add-Usage([string]$Text) {
@@ -114,10 +106,13 @@ function Update-SelInfo {
   $sel = $script:Selection
   if (-not $sel) { return }
   $cost = Get-CostEstimate $sel.chars
-  $money = if ($Cfg.provider -eq 'piper') { 'бесплатно (локально)' }
-           elseif ($Cfg.provider -eq 'yandex') { Format-Rub $cost.rub }
-           else { Format-Usd $cost.usd }
-  $rub = if ($Cfg.provider -eq 'openrouter' -and $cost.usd -gt 0) { ' (≈ ' + (Format-Rub ($cost.usd * [double]$script:Usage.rate.usdRub)) + ')' } else { '' }
+  $provider = Get-ConfiguredProvider
+  $money = switch ($provider.Currency) {
+    'rub'   { Format-Rub $cost.rub }
+    'usd'   { Format-Usd $cost.usd }
+    default { if ($provider.Local) { 'бесплатно (локально)' } else { 'бесплатно' } }
+  }
+  $rub = if ($provider.Currency -eq 'usd' -and $cost.usd -gt 0) { ' (≈ ' + (Format-Rub ($cost.usd * [double]$script:Usage.rate.usdRub)) + ')' } else { '' }
   try { $uiSelInfo.Text = "Выделено: {0:N0} симв. ≈ {1}{2} · {3}" -f $sel.chars, $money, $rub, (Get-ProviderLabel) } catch { }
 }
 
@@ -130,20 +125,19 @@ function Update-CostLine {
   $todayRub = [double]$dayEntry.rub + [double]$dayEntry.usd * $rate
   $totalRub = [double]$entry.rub + [double]$entry.usd * $rate
   $balance = $script:Usage.balance.openrouter
+  $provider = Get-ConfiguredProvider
 
-  $line = if ($Cfg.provider -in @('piper', 'silero')) {
+  $line = if ($provider.Local) {
     "Сегодня: {0:N0} симв. · бесплатно (локально) · {1}" -f $dayEntry.chars, (Get-ProviderLabel)
   } else {
     "Сегодня: {0:N0} симв. · {1} · {2}   ·   {3}" -f $dayEntry.chars, (Format-Rub $todayRub), (Format-Usd ([double]$dayEntry.usd)), (Get-ProviderLabel)
   }
-  if ($Cfg.provider -eq 'openrouter' -and $balance.at) {
-    $line += ("   ·   остаток {0} (≈ {1})" -f (Format-UsdWhole ([double]$balance.left)), (Format-Rub ([double]$balance.left * $rate)))
-  }
+  if ($provider.LineExtra) { $line += (& $provider.LineExtra $balance $rate) }
   try { $uiCostLine.Text = $line } catch { }
 
   $details = @()
   $details += "Источник: {0}" -f (Get-ProviderLabel)
-  if ($Cfg.provider -in @('piper', 'silero')) {
+  if ($provider.Local) {
     $details += "Сегодня: {0:N0} симв., {1} запрос(ов) — бесплатно (локально)" -f $dayEntry.chars, $dayEntry.requests
     $details += "Всего по этому источнику: {0:N0} симв., {1} запрос(ов) — бесплатно" -f $entry.chars, $entry.requests
   } else {
@@ -156,18 +150,9 @@ function Update-CostLine {
   $sttRub = [double]$sttDay.usd * $rate
   $details += "Распознавание: сегодня {0:N1} с, {1} запрос(ов) — {2} ({3})" -f [double]$sttDay.seconds, [int]$sttDay.requests, (Format-Rub $sttRub), (Format-Usd ([double]$sttDay.usd))
   $details += "Распознавание всего: {0:N1} с, {1} запрос(ов) — {2}" -f $sttTotals.seconds, $sttTotals.requests, (Format-Usd $sttTotals.usd)
-  if ($Cfg.provider -eq 'openrouter' -and $balance.at) {
-    $details += "OpenRouter: осталось {0} из {1}, израсходовано {2} (обновлено {3})" -f (Format-UsdWhole ([double]$balance.left)), (Format-UsdWhole ([double]$balance.total)), (Format-UsdWhole ([double]$balance.used)), $balance.at
-  }
-  if ($Cfg.provider -eq 'yandex' -and [double]$Cfg.yandexBalanceStart -gt 0) {
-    $left = [double]$Cfg.yandexBalanceStart - ([double]$entry.rub - [double]$Cfg.yandexSpentAtStart)
-    $details += "Яндекс: осталось ≈ {0} (введено вручную {1})" -f (Format-Rub $left), (Format-Rub ([double]$Cfg.yandexBalanceStart))
-  }
-  if ($Cfg.provider -eq 'piper') {
-    $details += "Piper: локальный синтез, интернет и оплата не нужны"
-  }
-  if ($Cfg.provider -eq 'silero') {
-    $details += "Silero: локальный синтез, интернет и оплата не нужны"
+  if ($provider.DetailsExtra) {
+    $extra = & $provider.DetailsExtra $entry $balance $rate
+    if ($extra) { $details += $extra }
   }
   try { $uiCostDetails.Text = ($details -join "`n") } catch { }
 }

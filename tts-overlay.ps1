@@ -299,6 +299,8 @@ $script:SileroWorker = $null
 $script:YandexSkipEmotion = $false
 $script:SileroModelLoaded = ''
 $script:EdgeWorker = $null
+$script:Providers = Get-ProviderMap
+$script:FallbackProviderId = 'yandex'   # запасной движок: озвучивает, когда основной не ответил
 $script:ActiveProvider = [string]$Cfg.provider
 # ---------------------------------------------------------------- учёт затрат
 
@@ -345,46 +347,22 @@ function Apply-Models {
 
 function Apply-Voices {
   $uiVoiceCombo.Items.Clear()
-  if ($Cfg.provider -in @('piper', 'silero', 'edge', 'sapi')) {
-    $uiVoiceCombo.ToolTip = 'Локальный голос (работает без интернета).'
-    $script:Voices = @(Get-LocalVoices)
-    foreach ($name in $script:Voices) { [void]$uiVoiceCombo.Items.Add($name) }
-    $current = switch ($Cfg.provider) {
-      'silero' { [string]$Cfg.sileroSpeaker }
-      'edge'   { [string]$Cfg.edgeVoice }
-      'sapi'   { [string]$Cfg.sapiVoice }
-      default  { [string]$Cfg.piperVoice }
+  $provider = Get-ConfiguredProvider
+  if ($provider.Voices) {
+    $uiVoiceCombo.ToolTip = $provider.Tooltip
+    $script:Voices = @(& $provider.Voices)
+    $titles = if ($provider.VoiceTitles) { & $provider.VoiceTitles } else { $null }
+    foreach ($name in $script:Voices) {
+      [void]$uiVoiceCombo.Items.Add($(if ($titles) { '{0} — {1}' -f $name, $titles[$name] } else { $name }))
     }
-    $index = [Array]::IndexOf($script:Voices, $current)
+    $index = [Array]::IndexOf($script:Voices, [string]$Cfg.($provider.VoiceKey))
     if ($index -lt 0) {
       $index = 0
-      $current = [string]$script:Voices[0]
-      switch ($Cfg.provider) {
-        'silero' { $Cfg.sileroSpeaker = $current }
-        'edge'   { $Cfg.edgeVoice = $current }
-        'sapi'   { $Cfg.sapiVoice = $current }
-        default  { $Cfg.piperVoice = $current }
-      }
+      $Cfg.($provider.VoiceKey) = [string]$script:Voices[0]
       Save-Config
     }
     $uiVoiceCombo.SelectedIndex = $index
-    $uiModelInfo.Text = "$(Get-ProviderLabel) · бесплатно"
-    return
-  }
-  if ($Cfg.provider -eq 'yandex') {
-    $uiVoiceCombo.ToolTip = 'Голос Яндекс SpeechKit.'
-    $script:Voices = @($script:YandexVoices.Keys)
-    foreach ($name in $script:YandexVoices.Keys) {
-      [void]$uiVoiceCombo.Items.Add(('{0} — {1}' -f $name, $script:YandexVoices[$name]))
-    }
-    $index = [Array]::IndexOf($script:Voices, [string]$Cfg.yandexVoice)
-    if ($index -lt 0) {
-      $index = 0
-      $Cfg.yandexVoice = [string]$script:Voices[0]
-      Save-Config
-    }
-    $uiVoiceCombo.SelectedIndex = $index
-    $uiModelInfo.Text = "Яндекс SpeechKit · $($Cfg.yandexLang) · голос $($Cfg.yandexVoice)"
+    $uiModelInfo.Text = if ($provider.Free) { "$(Get-ProviderLabel) · бесплатно" } else { & $provider.Info }
     return
   }
 
@@ -409,10 +387,11 @@ function Apply-Voices {
 
 function Apply-Provider {
   $script:ActiveProvider = [string]$Cfg.provider
-  $uiModelBlock.Visibility = if ($Cfg.provider -eq 'openrouter') { 'Visible' } else { 'Collapsed' }
-  $uiBtnReload.IsEnabled = ($Cfg.provider -eq 'openrouter')
+  $hasModels = (Get-ConfiguredProvider).HasModels
+  $uiModelBlock.Visibility = if ($hasModels) { 'Visible' } else { 'Collapsed' }
+  $uiBtnReload.IsEnabled = $hasModels
   Apply-Voices
-  if ($Cfg.provider -eq 'openrouter' -and -not $script:Models.Count) { Load-Models }
+  if ($hasModels -and -not $script:Models.Count) { Load-Models }
   Update-CostLine
   Update-SelInfo
 }
@@ -450,7 +429,7 @@ $uiBtnRefreshCost.Add_Click({
 })
 $uiBtnGear.Add_Click({
   $uiSettings.Visibility = if ($uiSettings.Visibility -eq 'Collapsed') { 'Visible' } else { 'Collapsed' }
-  if ($uiSettings.Visibility -eq 'Visible' -and $Cfg.provider -eq 'openrouter' -and -not $uiModelCombo.Items.Count) { Load-Models }
+  if ($uiSettings.Visibility -eq 'Visible' -and (Get-ConfiguredProvider).HasModels -and -not $uiModelCombo.Items.Count) { Load-Models }
 })
 
 $uiTitleBar.Add_MouseLeftButtonDown({
@@ -459,7 +438,7 @@ $uiTitleBar.Add_MouseLeftButtonDown({
 
 $uiModelCombo.Add_SelectionChanged({
   if ($uiModelCombo.SelectedIndex -lt 0 -or $uiModelCombo.SelectedIndex -ge $script:Models.Count) { return }
-  if ($Cfg.provider -ne 'openrouter') { return }
+  if (-not (Get-ConfiguredProvider).HasModels) { return }
   $model = $script:Models[$uiModelCombo.SelectedIndex]
   $Cfg.model = $model.id
   $script:Voices = @($model.supported_voices)
@@ -470,31 +449,16 @@ $uiModelCombo.Add_SelectionChanged({
 
 $uiProviderCombo.Add_SelectionChanged({
   if ($uiProviderCombo.SelectedIndex -lt 0) { return }
-  $Cfg.provider = [string]$script:Providers[$uiProviderCombo.SelectedIndex]
+  $Cfg.provider = [string]@($script:Providers.Keys)[$uiProviderCombo.SelectedIndex]
   Save-Config
   Apply-Provider
 })
 
 $uiVoiceCombo.Add_SelectionChanged({
   if ($uiVoiceCombo.SelectedIndex -lt 0 -or $uiVoiceCombo.SelectedIndex -ge $script:Voices.Count) { return }
-  if ($Cfg.provider -eq 'yandex') {
-    $Cfg.yandexVoice = [string]$script:Voices[$uiVoiceCombo.SelectedIndex]
-    $uiModelInfo.Text = "Яндекс SpeechKit · $($Cfg.yandexLang) · голос $($Cfg.yandexVoice)"
-  } elseif ($Cfg.provider -eq 'piper') {
-    $Cfg.piperVoice = [string]$script:Voices[$uiVoiceCombo.SelectedIndex]
-    $uiModelInfo.Text = "Piper · локально · $($Cfg.piperVoice)"
-  } elseif ($Cfg.provider -eq 'silero') {
-    $Cfg.sileroSpeaker = [string]$script:Voices[$uiVoiceCombo.SelectedIndex]
-    $uiModelInfo.Text = "Silero · локально · $($Cfg.sileroSpeaker)"
-  } elseif ($Cfg.provider -eq 'edge') {
-    $Cfg.edgeVoice = [string]$script:Voices[$uiVoiceCombo.SelectedIndex]
-    $uiModelInfo.Text = "Edge TTS · бесплатно · $($Cfg.edgeVoice)"
-  } elseif ($Cfg.provider -eq 'sapi') {
-    $Cfg.sapiVoice = [string]$script:Voices[$uiVoiceCombo.SelectedIndex]
-    $uiModelInfo.Text = "SAPI 5 · встроенный голос · $($Cfg.sapiVoice)"
-  } else {
-    $Cfg.voice = [string]$script:Voices[$uiVoiceCombo.SelectedIndex]
-  }
+  $provider = Get-ConfiguredProvider
+  $Cfg.($provider.VoiceKey) = [string]$script:Voices[$uiVoiceCombo.SelectedIndex]
+  if ($provider.Info) { $uiModelInfo.Text = & $provider.Info }
   Save-Config
   Update-CostLine
   Update-SelInfo
@@ -796,7 +760,7 @@ $script:Timer.Add_Tick({
             if ($contentType -match 'rate=(\d+)') { $rate = [int]$Matches[1] }
             ConvertTo-WavFile -Pcm $bytes -Path $item.Path -SampleRate $rate
             Write-Log "chunk $($item.Index): $($bytes.Length) байт pcm ${rate} Гц -> wav"
-          } elseif ($script:ActiveProvider -eq 'yandex') {
+          } elseif ((Get-ActiveProvider).WavFromRaw) {
             ConvertTo-WavFile -Pcm $bytes -Path $item.Path
           } else {
             [System.IO.File]::WriteAllBytes($item.Path, $bytes)
@@ -867,10 +831,8 @@ $uiSttProviderCombo.SelectedIndex = $sttProviderIndex
 $uiSttModelBox.Text = Get-SttCurrentModel
 
 # источник озвучки: облачные, локальные (Silero/Piper/Edge/SAPI) и модели OpenRouter
-$script:Providers = @('yandex', 'edge', 'silero', 'sapi', 'piper', 'openrouter')
-$providerLabels = @('Яндекс SpeechKit', 'Edge TTS (бесплатно)', 'Silero (локально, бесплатно)', 'SAPI 5 (встроенный в Windows)', 'Piper (локально, бесплатно)', 'OpenRouter (модели)')
-foreach ($label in $providerLabels) { [void]$uiProviderCombo.Items.Add($label) }
-$providerIndex = [Array]::IndexOf($script:Providers, [string]$Cfg.provider)
+foreach ($id in $script:Providers.Keys) { [void]$uiProviderCombo.Items.Add($script:Providers[$id].Title) }
+$providerIndex = [Array]::IndexOf(@($script:Providers.Keys), [string]$Cfg.provider)
 if ($providerIndex -lt 0) { $providerIndex = 0; $Cfg.provider = 'yandex' }
 $uiProviderCombo.SelectedIndex = $providerIndex
 $uiChkNumbers.IsChecked = [bool]$Cfg.readNumbers
@@ -916,10 +878,9 @@ $registered = Register-Hotkeys
 Update-CostLine
 Refresh-Balance
 Refresh-Rate
-if ($Cfg.provider -eq 'openrouter') { Load-Models }
-# локальную модель грузим заранее, чтобы первая фраза не ждала
-if ($Cfg.provider -eq 'silero') { Start-SileroWorker $true }
-if ($Cfg.provider -eq 'edge') { Start-EdgeWorker $true }
+# список моделей OpenRouter и локальные воркеры грузим заранее, чтобы первая фраза не ждала
+$warmup = (Get-ConfiguredProvider).Warmup
+if ($warmup) { & $warmup }
 # воркер распознавания тоже поднимаем сразу: он грузит модель в фоне
 Start-SttWorker $true
 
@@ -970,14 +931,7 @@ if ($registered.Count) {
   Set-Status 'Горячие клавиши заняты — работаю через кнопки и трей'
 }
 
-$sourceLabel = switch ($Cfg.provider) {
-  'yandex' { "яндекс/$($Cfg.yandexVoice)" }
-  'edge'   { "edge/$($Cfg.edgeVoice)" }
-  'silero' { "silero/$($Cfg.sileroSpeaker)" }
-  'sapi'   { "sapi/$($Cfg.sapiVoice)" }
-  'piper'  { "piper/$($Cfg.piperVoice)" }
-  default  { "$($Cfg.model)/$($Cfg.voice)" }
-}
+$sourceLabel = & (Get-ConfiguredProvider).Source
 Write-Log "start: окно $([int]$win.Left),$([int]$win.Top) источник $sourceLabel"
 
 if ($Start) { Write-Log 'start flag: оверлей запущен' }
