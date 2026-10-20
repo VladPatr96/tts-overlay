@@ -180,6 +180,7 @@ python -m pip install sounddevice faster-whisper
 - `lib-core.ps1` — лог, конфиг и ключ OpenRouter. Остальные части главного скрипта выносятся в `lib-*.ps1` по слоям (`docs/adr/0001-module-layout.md`).
 - `lib-usage.ps1` — учёт затрат, баланс OpenRouter и курс ЦБ.
 - `lib-providers.ps1` — движки синтеза: запросы, запуск воркеров, голоса, форматы звука.
+- `lib-playback.ps1` — очередь кусков, кэш и воспроизведение.
 - `lib-text.ps1` — подготовка текста перед синтезом: числа, даты, деньги, дроби, словарь произношения, сборка SSML.
 - `edge/edge-worker.py` — воркер Edge TTS (Python): DRM-токен, параллельные попытки, декодирование mp3 в WAV.
 - `silero/silero-worker.py` — воркер Silero: модель в памяти, автоударения и «ё».
@@ -197,6 +198,7 @@ tts-overlay.ps1        основной скрипт (оверлей, хотке
 lib-core.ps1           лог, конфиг, ключи
 lib-usage.ps1          затраты, баланс, курс
 lib-providers.ps1      движки: запросы, воркеры, голоса
+lib-playback.ps1       очередь, кэш, воспроизведение
 lib-text.ps1           разбор чисел и дат, словарь, сборка SSML
 install.ps1            автозапуск и ярлыки
 start.cmd / stop-overlay.ps1
