@@ -25,6 +25,8 @@
 | PyTorch | BSD-3-Clause | `pip install torch` (только для Silero) |
 | Яндекс SpeechKit | коммерческий API | ключ пользователя |
 | OpenRouter | коммерческий API | ключ пользователя |
+| faster-whisper | MIT | `pip install faster-whisper`; модель Whisper качается в кэш Hugging Face при первом запуске (в репозиторий не входит) |
+| sounddevice | MIT | `pip install sounddevice` (запись с микрофона для распознавания) |
 | Edge TTS | неофициальный эндпоинт Microsoft | используется как есть, бесплатно, без гарантий |
 
 Модели и бинарники намеренно не лежат в репозитории — они большие и лицензируются отдельно.

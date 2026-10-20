@@ -10,6 +10,8 @@
 | `lib-text.ps1` | подготовка текста перед синтезом: числа, даты, деньги, дроби, словарь произношения, сборка SSML |
 | `edge/edge-worker.py` | воркер Edge TTS: DRM-токен, параллельные попытки, mp3 → WAV |
 | `silero/silero-worker.py` | воркер Silero: модель в памяти, автоударения и «ё» |
+| `silero/silero-tts.py`, `silero/compare-models.py` | **оставлены, не используются**: разовый синтез Silero и сравнение моделей; на них указывает только ключ `sileroScript` в конфиге |
+| `stt/stt-worker.py` | воркер распознавания: запись с микрофона (`sounddevice`) и локальный faster-whisper |
 | `sapi/sapi-speak.ps1` | синтез SAPI 5 в отдельном процессе |
 | `install.ps1`, `start.cmd`, `stop-overlay.ps1` | автозапуск, запуск, остановка |
 | `pronounce.json` | словарь произношения (создаётся автоматически) |
@@ -34,6 +36,11 @@ pwsh -File tts-overlay.ps1 -Say "Проверка произношения: API,
 Get-Content tts-overlay.log -Tail 20
 pwsh -File stop-overlay.ps1
 ```
+
+## Документы
+
+- `GLOSSARY.md` — термины проекта (движок, кусок, сессия, воркер, fallback); называй вещи так же в коде и задачах.
+- `docs/adr/` — решения: [0002 — логи воркеров вне `tts-overlay.log`](docs/adr/0002-worker-logs.md).
 
 ## Лицензия
 
