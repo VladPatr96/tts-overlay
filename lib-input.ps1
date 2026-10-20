@@ -99,6 +99,17 @@ function Speak-Selection {
   Start-Speaking $text 'выделенное'
 }
 
+function Get-ClipboardKind {
+  # что лежит в буфере, когда текста в нём нет: 'пуст', 'изображение', 'файлы' или 'другое'
+  try {
+    if ([System.Windows.Forms.Clipboard]::ContainsImage()) { return 'изображение' }
+    if ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) { return 'файлы' }
+    $data = [System.Windows.Forms.Clipboard]::GetDataObject()
+    if ($data -and $data.GetFormats().Count) { return 'другое' }
+  } catch { }
+  return 'пуст'
+}
+
 function Speak-Clipboard {
   $text = ''
   try { $text = [System.Windows.Forms.Clipboard]::GetText() } catch { }
@@ -106,7 +117,12 @@ function Speak-Clipboard {
   $script:Selection = @{ chars = $text.Length }
   $null = Resolve-Provider $text
   Update-SelInfo
-  if (-not $text.Trim()) { Set-Status 'Буфер пуст'; return }
+  if (-not $text.Trim()) {
+    $kind = Get-ClipboardKind
+    Write-Log "speak-clipboard: текста нет, в буфере: $kind"
+    Set-Status $(if ($kind -eq 'пуст') { 'Буфер пуст' } else { "В буфере не текст ($kind) — озвучивать нечего" })
+    return
+  }
   Start-Speaking $text 'буфер'
 }
 
