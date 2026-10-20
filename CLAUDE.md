@@ -6,14 +6,15 @@
 
 | Файл | Что делает |
 |---|---|
-| `tts-overlay.ps1` | главный скрипт: параметры, оверлей, хоткеи, перехват выделения, очередь кусков, кэш, счётчики затрат, панель `⚙`; подключает модули. Части выносятся в `lib-*.ps1` по [ADR 0001](docs/adr/0001-module-layout.md) |
+| `tts-overlay.ps1` | точка входа: параметры (`-Say`, `-Clipboard`, `-Stop`), окно WPF и панель `⚙`, обработчики интерфейса, трей, таймер (11 вызовов функций модулей), цикл окна; подключает модули `lib-*.ps1` ([ADR 0001](docs/adr/0001-module-layout.md)) |
 | `lib-core.ps1` | лог (`Write-Log`), конфиг (`Get-DefaultConfig`, `Import-Config`, `Save-Config`), ключ OpenRouter (`Get-ApiKey`) |
-| `lib-usage.ps1` | учёт затрат, баланс OpenRouter, курс ЦБ, строки затрат в интерфейсе (`Add-Usage`, `Update-CostLine`, `Refresh-Balance`, `Refresh-Rate`) |
-| `lib-providers.ps1` | движки (OpenRouter, Яндекс, Edge, Silero, SAPI, Piper): карта движков `Get-ProviderMap`, запросы, воркеры, голоса, форматы, WAV-утилиты, `Invoke-ProviderFallback` |
-| `lib-playback.ps1` | очередь кусков, кэш озвученного, воспроизведение: `Split-Text`, `Get-CachePath`, `Request-More`, `Try-Play-Next`, `Start-Speaking`, `Stop-Speaking`, `Toggle-Pause` |
-| `lib-input.ps1` | ввод: горячие клавиши (`Register-Hotkeys`), перехват выделенного (`Get-SelectedText`, `Speak-Selection`), буфер обмена (`Speak-Clipboard`, `Set-ClipboardText`) |
+| `lib-usage.ps1` | учёт затрат, баланс OpenRouter, курс ЦБ, строки затрат в интерфейсе (`Add-Usage`, `Update-CostLine`, `Refresh-Balance`, `Refresh-Rate`; шаги таймера `Receive-BalanceResult`, `Receive-RateResult`, `Update-UsageRefresh`) |
+| `lib-providers.ps1` | движки (OpenRouter, Яндекс, Edge, Silero, SAPI, Piper): карта движков `Get-ProviderMap`, запросы, воркеры, голоса, форматы, WAV-утилиты, `Invoke-ProviderFallback`, шаг таймера `Receive-ModelList` |
+| `lib-playback.ps1` | очередь кусков, кэш озвученного, воспроизведение: `Split-Text`, `Get-CachePath`, `Request-More`, `Try-Play-Next`, `Start-Speaking`, `Stop-Speaking`, `Toggle-Pause`; шаги таймера `Update-PendingQueue` (→ `Complete-*Item`), `Start-PendingPlay`, `Remove-StaleSynthFiles`, `Read-SpoolQueue` |
+| `lib-input.ps1` | ввод: горячие клавиши (`Register-Hotkeys`), перехват выделенного (`Get-SelectedText`, `Speak-Selection`), буфер обмена (`Speak-Clipboard`, `Set-ClipboardText`); шаги таймера `Invoke-QueuedInput`, `Update-LastForeground` |
 | `lib-stt.ps1` | диктовка: воркер распознавания, запись с микрофона, распознавание (OpenRouter или faster-whisper), результат в буфер (`Start-VoiceRecording`, `Start-VoiceRecognition`, `Update-VoiceState`) |
 | `lib-text.ps1` | подготовка текста перед синтезом: числа, даты, деньги, дроби, словарь произношения, сборка SSML |
+| `tests/lib-text.Tests.ps1` | Pester-тесты подготовки текста: `pwsh -NoProfile -Command "Import-Module Pester; Invoke-Pester tests"` |
 | `edge/edge-worker.py` | воркер Edge TTS: DRM-токен, параллельные попытки, mp3 → WAV |
 | `silero/silero-worker.py` | воркер Silero: модель в памяти, автоударения и «ё» |
 | `silero/silero-tts.py`, `silero/compare-models.py` | **оставлены, не используются**: разовый синтез Silero и сравнение моделей; на них указывает только ключ `sileroScript` в конфиге |
@@ -44,6 +45,8 @@ pwsh -File tts-overlay.ps1 -Say "Проверка произношения: API,
 Get-Content tts-overlay.log -Tail 20
 pwsh -File stop-overlay.ps1
 ```
+
+После правки `lib-text.ps1` — ещё Pester (команда в таблице выше).
 
 ## Документы
 
