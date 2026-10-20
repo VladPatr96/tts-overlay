@@ -66,6 +66,23 @@ Describe 'Convert-SpeechText: годы с круглыми десятками' {
   }
 }
 
+Describe 'Convert-SpeechText: сотни в годах' {
+  It '1996 — девятьсот в именительном' { Convert-SpeechText '01.01.1996' $null $true | Should Be 'первого января тысяча девятьсот девяносто шестого года' }
+  It '1812 — восемьсот' { Convert-SpeechText '01.01.1812' $null $true | Should Be 'первого января тысяча восемьсот двенадцатого года' }
+  It '1945 — девятьсот сорок пятого' { Convert-SpeechText '01.01.1945' $null $true | Should Be 'первого января тысяча девятьсот сорок пятого года' }
+  It '1990 — сочетание с круглым десятком' { Convert-SpeechText '01.01.1990' $null $true | Should Be 'первого января тысяча девятьсот девяностого года' }
+  It '1900 — порядковая форма сотен' { Convert-SpeechText '01.01.1900' $null $true | Should Be 'первого января тысяча девятисотого года' }
+  It '1800 — восьмисотого' { Convert-SpeechText '01.01.1800' $null $true | Should Be 'первого января тысяча восьмисотого года' }
+  It '2100 — сотого' { Convert-SpeechText '01.01.2100' $null $true | Should Be 'первого января две тысячи сотого года' }
+  It 'годы без сотен не меняются' {
+    Convert-SpeechText '01.01.2026' $null $true | Should Be 'первого января две тысячи двадцать шестого года'
+    Convert-SpeechText '01.01.1099' $null $true | Should Be 'первого января тысяча девяносто девятого года'
+  }
+  It 'полная дата из проверки после правки' {
+    Convert-SpeechText '16.10.2026' $null $true | Should Be 'шестнадцатого октября две тысячи двадцать шестого года'
+  }
+}
+
 Describe 'Convert-SpeechText: версии не читаются как даты' {
   It 'Python 3.11' { Convert-SpeechText 'Python 3.11' $null $true | Should Be 'Python три точка одиннадцать' }
   It 'версия 1.2.3' { Convert-SpeechText 'версия 1.2.3' $null $true | Should Be 'версия один точка два точка три' }
