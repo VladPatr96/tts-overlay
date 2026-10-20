@@ -86,20 +86,27 @@ async def one_shot_limited(text: str, voice: str, tmp_path: str, rate: str, pitc
 async def attempt_once(text: str, voice: str, out_path: str, rate: str, pitch: str) -> int:
     """Попытка с несколькими параллельными запросами: берём первый успешный."""
     tasks = []
+    tmp_of = {}
     for i in range(ATTEMPTS_IN_PARALLEL):
         tmp = f"{out_path}.try{i}.mp3"
-        tasks.append(asyncio.create_task(one_shot_limited(text, voice, tmp, rate, pitch)))
+        task = asyncio.create_task(one_shot_limited(text, voice, tmp, rate, pitch))
+        tmp_of[task] = tmp
+        tasks.append(task)
     best = 0
     best_tmp = None
+    pending = set(tasks)
     try:
-        for coro in asyncio.as_completed(tasks):
-            try:
-                size = await coro
-            except Exception:
-                continue
-            if size > best:
-                best = size
-                best_tmp = f"{out_path}.try{tasks.index(coro) if coro in tasks else 0}.mp3"
+        # asyncio.wait отдаёт сами задачи, поэтому видно, какая попытка завершилась
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                try:
+                    size = task.result()
+                except Exception:
+                    continue
+                if size > best:
+                    best = size
+                    best_tmp = tmp_of[task]
     finally:
         for task in tasks:
             if not task.done():
