@@ -27,6 +27,23 @@ Describe 'Convert-SpeechText: тысячи в женском роде' {
   It 'миллионы остаются в мужском роде' { Convert-SpeechText '2000000 рублей' $null $true | Should Be 'два миллиона рублей' }
 }
 
+Describe 'Convert-SpeechText: дни месяца 21–31' {
+  It '21.10 — двадцать первого' { Convert-SpeechText 'до 21.10' $null $true | Should Be 'до двадцать первого октября' }
+  It '22–29' {
+    Convert-SpeechText '22.10' $null $true | Should Be 'двадцать второго октября'
+    Convert-SpeechText '25.10' $null $true | Should Be 'двадцать пятого октября'
+    Convert-SpeechText '29.10' $null $true | Should Be 'двадцать девятого октября'
+  }
+  It '30.10 — тридцатого' { Convert-SpeechText '30.10' $null $true | Should Be 'тридцатого октября' }
+  It '31.12 — тридцать первого' { Convert-SpeechText '31.12' $null $true | Should Be 'тридцать первого декабря' }
+  It 'дни 1–20 не меняются' {
+    Convert-SpeechText '01.10' $null $true | Should Be 'первого октября'
+    Convert-SpeechText '19.10' $null $true | Should Be 'девятнадцатого октября'
+    Convert-SpeechText '20.10' $null $true | Should Be 'двадцатого октября'
+  }
+  It 'полная дата с 21-м числом' { Convert-SpeechText '21.10.2026' $null $true | Should Be 'двадцать первого октября две тысячи двадцать шестого года' }
+}
+
 Describe 'Convert-SpeechText: версии не читаются как даты' {
   It 'Python 3.11' { Convert-SpeechText 'Python 3.11' $null $true | Should Be 'Python три точка одиннадцать' }
   It 'версия 1.2.3' { Convert-SpeechText 'версия 1.2.3' $null $true | Should Be 'версия один точка два точка три' }
