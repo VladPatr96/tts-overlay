@@ -44,6 +44,28 @@ Describe 'Convert-SpeechText: дни месяца 21–31' {
   It 'полная дата с 21-м числом' { Convert-SpeechText '21.10.2026' $null $true | Should Be 'двадцать первого октября две тысячи двадцать шестого года' }
 }
 
+Describe 'Convert-SpeechText: годы с круглыми десятками' {
+  $cases = @(
+    @{ y = 2020; w = 'двадцатого' }, @{ y = 2030; w = 'тридцатого' }, @{ y = 2040; w = 'сорокового' },
+    @{ y = 2050; w = 'пятидесятого' }, @{ y = 2060; w = 'шестидесятого' }, @{ y = 2070; w = 'семидесятого' },
+    @{ y = 2080; w = 'восьмидесятого' }, @{ y = 2090; w = 'девяностого' }
+  )
+  foreach ($c in $cases) {
+    It "$($c.y) — две тысячи $($c.w) года" {
+      Convert-SpeechText "01.01.$($c.y)" $null $true | Should Be "первого января две тысячи $($c.w) года"
+    }
+  }
+  It 'годы с некруглыми десятками не меняются' {
+    Convert-SpeechText '01.01.2026' $null $true | Should Be 'первого января две тысячи двадцать шестого года'
+    Convert-SpeechText '01.01.2011' $null $true | Should Be 'первого января две тысячи одиннадцатого года'
+    Convert-SpeechText '01.01.2019' $null $true | Should Be 'первого января две тысячи девятнадцатого года'
+    Convert-SpeechText '01.01.2021' $null $true | Should Be 'первого января две тысячи двадцать первого года'
+  }
+  It 'полная дата из проверки после правки' {
+    Convert-SpeechText '16.10.2026' $null $true | Should Be 'шестнадцатого октября две тысячи двадцать шестого года'
+  }
+}
+
 Describe 'Convert-SpeechText: версии не читаются как даты' {
   It 'Python 3.11' { Convert-SpeechText 'Python 3.11' $null $true | Should Be 'Python три точка одиннадцать' }
   It 'версия 1.2.3' { Convert-SpeechText 'версия 1.2.3' $null $true | Should Be 'версия один точка два точка три' }
