@@ -12,37 +12,54 @@ function Get-WordForm([int]$n, [string]$one, [string]$few, [string]$many) {
   return $many
 }
 
+# слова для чисел: одни таблицы на все функции ниже
+$script:Ones = @('ноль','один','два','три','четыре','пять','шесть','семь','восемь','девять',
+                 'десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать',
+                 'шестнадцать','семнадцать','восемнадцать','девятнадцать')
+$script:Tens = @{ 20='двадцать';30='тридцать';40='сорок';50='пятьдесят';60='шестьдесят';70='семьдесят';80='восемьдесят';90='девяносто' }
+$script:Hundreds = @('сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот')
+$script:OnesFeminine = @('','одна','две','три','четыре','пять','шесть','семь','восемь','девять')
+# родительный падеж (даты, годы)
+$script:OnesGenitive = @('нулевого','первого','второго','третьего','четвёртого','пятого','шестого','седьмого','восьмого','девятого',
+                         'десятого','одиннадцатого','двенадцатого','тринадцатого','четырнадцатого','пятнадцатого',
+                         'шестнадцатого','семнадцатого','восемнадцатого','девятнадцатого')
+$script:HundredsGenitive = @('ста','двухсот','трёхсот','четырёхсот','пятисот','шестисот','семисот','восьмисот','девятисот')
+
+function Convert-ScaleToWords([int]$Count, [string]$One, [string]$Few, [string]$Many, [scriptblock]$Words = $null) {
+  # «два миллиона», «пять тысяч»; единица — просто «миллион»/«тысяча»
+  if ($Count -eq 1) { return $One }
+  $text = if ($Words) { & $Words $Count } else { Convert-NumberToWords $Count }
+  return $text + ' ' + (Get-WordForm $Count $One $Few $Many)
+}
+
+function Get-ScaleParts([int]$Millions, [int]$Thousands, [scriptblock]$ThousandsWords = $null) {
+  # слова для миллионов и тысяч числа (пустой массив, если их нет)
+  $parts = @()
+  if ($Millions -gt 0) { $parts += Convert-ScaleToWords $Millions 'миллион' 'миллиона' 'миллионов' }
+  if ($Thousands -gt 0) { $parts += Convert-ScaleToWords $Thousands 'тысяча' 'тысячи' 'тысяч' $ThousandsWords }
+  return $parts
+}
+
 function Convert-NumberToWords([int]$n) {
   if ($n -eq 0) { return 'ноль' }
-  $ones = @('ноль','один','два','три','четыре','пять','шесть','семь','восемь','девять',
-            'десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать',
-            'шестнадцать','семнадцать','восемнадцать','девятнадцать')
-  $tens = @{ 20='двадцать';30='тридцать';40='сорок';50='пятьдесят';60='шестьдесят';70='семьдесят';80='восемьдесят';90='девяносто' }
-  $hundreds = @('сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот')
-  $parts = @()
   $millions = [Math]::Floor($n / 1000000)
   $n = $n % 1000000
   $thousands = [Math]::Floor($n / 1000)
   $rest = $n % 1000
-  if ($millions -gt 0) {
-    $parts += if ($millions -eq 1) { 'миллион' } else { (Convert-NumberToWords $millions) + ' ' + (Get-WordForm $millions 'миллион' 'миллиона' 'миллионов') }
-  }
-  if ($thousands -gt 0) {
-    $parts += if ($thousands -eq 1) { 'тысяча' } else { (Convert-NumberToWords $thousands) + ' ' + (Get-WordForm $thousands 'тысяча' 'тысячи' 'тысяч') }
-  }
+  $parts = @(Get-ScaleParts $millions $thousands)
   if ($rest -gt 0 -or -not $parts.Count) {
     if ($rest -ge 100) {
       $h = [Math]::Floor($rest / 100)
-      $parts += $hundreds[$h - 1]
+      $parts += $script:Hundreds[$h - 1]
       $r = $rest % 100
       if ($r -gt 0) { $parts += (Convert-NumberToWords $r) }
     } elseif ($rest -ge 20) {
       $t = [int](([Math]::Floor($rest / 10) % 10) * 10)
-      $parts += $tens[$t]
+      $parts += $script:Tens[$t]
       $u = $rest % 10
-      if ($u -gt 0) { $parts += $ones[$u] }
+      if ($u -gt 0) { $parts += $script:Ones[$u] }
     } else {
-      $parts += $ones[$rest]
+      $parts += $script:Ones[$rest]
     }
   }
   return ($parts -join ' ')
@@ -50,27 +67,15 @@ function Convert-NumberToWords([int]$n) {
 
 function Convert-YearToWords([int]$year) {
   # 2026 -> "две тысячи девятьсот девяносто шестого года"
-  $genitive = @('нулевого','первого','второго','третьего','четвёртого','пятого','шестого','седьмого','восьмого','девятого',
-                'десятого','одиннадцатого','двенадцатого','тринадцатого','четырнадцатого','пятнадцатого',
-                'шестнадцатого','семнадцатого','восемнадцатого','девятнадцатого')
-  $tensGen = @{ 20='двадцатого';30='тридцатого';40='сорокового';50='пятидесятого';60='шестидесятого';70='семидесятого';80='восьмидесятого';90='девяностого' }
-  $hundredsGen = @('ста','двухсот','трёхсот','четырёхсот','пятисот','шестисот','семисот','восьмисот','девятисот')
   $millions = [Math]::Floor($year / 1000000)
   $year = $year % 1000000
   $thousands = [Math]::Floor($year / 1000)
   $rest = $year % 1000
-  $parts = @()
-  if ($millions -gt 0) {
-    $parts += if ($millions -eq 1) { 'миллион' } else { (Convert-NumberToWords $millions) + ' ' + (Get-WordForm $millions 'миллион' 'миллиона' 'миллионов') }
-  }
-  if ($thousands -gt 0) {
-    $feminine = @('','одна','две','три','четыре','пять','шесть','семь','восемь','девять')
-    $parts += if ($thousands -eq 1) { 'тысяча' } else { $feminine[$thousands] + ' ' + (Get-WordForm $thousands 'тысяча' 'тысячи' 'тысяч') }
-  }
+  $parts = @(Get-ScaleParts $millions $thousands { param($n) $script:OnesFeminine[$n] })
   if ($rest -gt 0) {
     if ($rest -ge 100) {
       $h = [Math]::Floor($rest / 100)
-      $parts += $hundredsGen[$h - 1]
+      $parts += $script:HundredsGenitive[$h - 1]
       $r = $rest % 100
       if ($r -gt 0) { $parts += (Convert-RemainderGenitive $r) }
     } else {
@@ -81,29 +86,20 @@ function Convert-YearToWords([int]$year) {
 }
 
 function Convert-RemainderGenitive([int]$n) {
-  $genitive = @('нулевого','первого','второго','третьего','четвёртого','пятого','шестого','седьмого','восьмого','девятого',
-                'десятого','одиннадцатого','двенадцатого','тринадцатого','четырнадцатого','пятнадцатого',
-                'шестнадцатого','семнадцатого','восемнадцатого','девятнадцатого')
-  $tens = @{ 20='двадцать';30='тридцать';40='сорок';50='пятьдесят';60='шестьдесят';70='семьдесят';80='восемьдесят';90='девяносто' }
   if ($n -ge 20) {
     $t = [int](([Math]::Floor($n / 10) % 10) * 10)
     $u = $n % 10
-    if ($u -eq 0) { return $tens[$t] }
-    return $tens[$t] + ' ' + $genitive[$u]
+    if ($u -eq 0) { return $script:Tens[$t] }
+    return $script:Tens[$t] + ' ' + $script:OnesGenitive[$u]
   }
-  return $genitive[$n]
+  return $script:OnesGenitive[$n]
 }
 
 function Convert-DayToGenitive([int]$day) {
   # 12 -> "двенадцатого" (родительный падеж, как в датах)
-  $gen = @('первого','второго','третьего','четвёртого','пятого','шестого','седьмого','восьмого','девятого',
-           'десятого','одиннадцатого','двенадцатого','тринадцатого','четырнадцатого','пятнадцатого',
-           'шестнадцатого','семнадцатого','восемнадцатого','девятнадцатого','двадцатого')
-  if ($day -le 20) { return $gen[$day - 1] }
-  if ($day -le 31) {
-    $units = @('первого','второго','третьего','четвёртого','пятого','шестого','седьмого','восьмого','девятого','десятого')
-    return 'тридцать ' + $units[($day - 21) % 10]
-  }
+  if ($day -le 19) { return $script:OnesGenitive[$day] }
+  if ($day -eq 20) { return 'двадцатого' }
+  if ($day -le 31) { return 'тридцать ' + $script:OnesGenitive[(($day - 21) % 10) + 1] }
   return (Convert-NumberToWords $day)
 }
 
@@ -115,12 +111,26 @@ function Convert-FractionToWords([string]$digits) {
   return "$(Convert-NumberToWords $value) $(Get-WordForm $value 'сотая' 'сотых' 'сотых')"
 }
 
+function Convert-DecimalToWords([int]$Whole, [string]$FractionDigits) {
+  # 12 и "5" -> "двенадцать целых пять десятых"
+  return "$(Convert-NumberToWords $Whole) $(Get-WordForm $Whole 'целая' 'целых' 'целых') $(Convert-FractionToWords $FractionDigits)"
+}
+
+function Convert-QuantityToWords([string]$Number, [string]$One, [string]$Few, [string]$Many) {
+  # число с единицей: "12.5" + процент -> "двенадцать целых пять десятых процента"
+  $whole = [int](($Number -split '[.,]')[0])
+  return "$(Convert-AnyNumberToWords $Number) $(Get-WordForm $whole $One $Few $Many)"
+}
+
+function Test-DayMonth([int]$Day, [int]$Month) {
+  return ($Month -ge 1 -and $Month -le 12 -and $Day -ge 1 -and $Day -le 31)
+}
+
 function Convert-AnyNumberToWords([string]$Number) {
   # "12.5" -> "двенадцать целых пять десятых", "1500" -> "тысяча пятьсот"
   $text = $Number.Trim() -replace '\s', ''
   if ($text -match '^(\d+)[.,](\d+)$') {
-    $whole = [int]$Matches[1]
-    return "$(Convert-NumberToWords $whole) $(Get-WordForm $whole 'целая' 'целых' 'целых') $(Convert-FractionToWords $Matches[2])"
+    return (Convert-DecimalToWords ([int]$Matches[1]) $Matches[2])
   }
   if ($text -match '^\d+$') { return (Convert-NumberToWords ([int]$text)) }
   return $Number
@@ -134,13 +144,7 @@ function Convert-GroupedNumber([string]$Groups) {
   if ($count -ge 3) { $millions = [int]$parts[$count - 3] }
   if ($count -ge 2) { $thousands = [int]$parts[$count - 2] }
   $rest = [int]$parts[$count - 1]
-  $out = @()
-  if ($millions -gt 0) {
-    $out += if ($millions -eq 1) { 'миллион' } else { (Convert-NumberToWords $millions) + ' ' + (Get-WordForm $millions 'миллион' 'миллиона' 'миллионов') }
-  }
-  if ($thousands -gt 0) {
-    $out += if ($thousands -eq 1) { 'тысяча' } else { (Convert-NumberToWords $thousands) + ' ' + (Get-WordForm $thousands 'тысяча' 'тысячи' 'тысяч') }
-  }
+  $out = @(Get-ScaleParts $millions $thousands)
   if ($rest -gt 0 -or -not $out.Count) { $out += (Convert-NumberToWords $rest) }
   return ($out -join ' ')
 }
@@ -240,38 +244,34 @@ function Convert-SpeechText([string]$Text, [hashtable]$Pronounce, [bool]$ReadNum
     $Text = [regex]::Replace($Text, '\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b', {
       param($m)
       $day = [int]$m.Groups[1].Value; $month = [int]$m.Groups[2].Value; $year = [int]$m.Groups[3].Value
-      if ($month -lt 1 -or $month -gt 12 -or $day -lt 1 -or $day -gt 31) { return $m.Value }
+      if (-not (Test-DayMonth $day $month)) { return $m.Value }
       return "$(Convert-DayToGenitive $day) $($script:MonthNames[$month - 1]) $(Convert-YearToWords $year)"
     })
     $Text = [regex]::Replace($Text, '(?<![\d.])\b(\d{1,2})\.(\d{2})\b(?!\d|\.\d)', {
       param($m)
       $day = [int]$m.Groups[1].Value; $month = [int]$m.Groups[2].Value
-      if ($month -lt 1 -or $month -gt 12 -or $day -lt 1 -or $day -gt 31) { return $m.Value }
+      if (-not (Test-DayMonth $day $month)) { return $m.Value }
       return "$(Convert-DayToGenitive $day) $($script:MonthNames[$month - 1])"
     })
     # проценты (вместе с дробной частью: 12.5 процента)
     $Text = [regex]::Replace($Text, '(\d+(?:[.,]\d+)?)\s*(?:%|процент\w*)', {
       param($m)
-      $n = [int](($m.Groups[1].Value -split '[.,]')[0])
-      return "$(Convert-AnyNumberToWords $m.Groups[1].Value) $(Get-WordForm $n 'процент' 'процента' 'процентов')"
+      return (Convert-QuantityToWords $m.Groups[1].Value 'процент' 'процента' 'процентов')
     })
     # доллары
     $Text = [regex]::Replace($Text, '\$\s*(\d+(?:[.,]\d+)?)', {
       param($m)
-      $n = [int](($m.Groups[1].Value -split '[.,]')[0])
-      return "$(Convert-AnyNumberToWords $m.Groups[1].Value) $(Get-WordForm $n 'доллар' 'доллара' 'долларов')"
+      return (Convert-QuantityToWords $m.Groups[1].Value 'доллар' 'доллара' 'долларов')
     })
     # рубли
     $Text = [regex]::Replace($Text, '(\d+(?:[.,]\d+)?)\s*(?:₽|руб\.|рублей|рубля|руб)\b', {
       param($m)
-      $n = [int](($m.Groups[1].Value -split '[.,]')[0])
-      return "$(Convert-AnyNumberToWords $m.Groups[1].Value) $(Get-WordForm $n 'рубль' 'рубля' 'рублей')"
+      return (Convert-QuantityToWords $m.Groups[1].Value 'рубль' 'рубля' 'рублей')
     })
     # десятичные: 1.5 → одна целая пять десятых (версии вида 1.2.3 не трогаем)
     $Text = [regex]::Replace($Text, '(?<!\.)\b(\d+)[.,](\d{1,2})\b(?!\.?\d)', {
       param($m)
-      $whole = [int]$m.Groups[1].Value; $frac = [int]$m.Groups[2].Value
-      return "$(Convert-NumberToWords $whole) $(Get-WordForm $whole 'целая' 'целых' 'целых') $(Convert-FractionToWords $m.Groups[2].Value)"
+      return (Convert-DecimalToWords ([int]$m.Groups[1].Value) $m.Groups[2].Value)
     })
     $Text = [regex]::Replace($Text, '\b\d{1,3}(?:\s\d{3})+(?!\d)', {
       param($m) (Convert-GroupedNumber $m.Value)
