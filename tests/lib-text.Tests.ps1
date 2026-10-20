@@ -103,6 +103,22 @@ Describe 'Convert-SpeechText: годы с круглой тысячей' {
   }
 }
 
+Describe 'Convert-SpeechText: суммы с пробелом-разделителем' {
+  It '22 000 рублей' { Convert-SpeechText '22 000 рублей' $null $true | Should Be 'двадцать две тысячи рублей' }
+  It '1 500 рублей' { Convert-SpeechText '1 500 рублей' $null $true | Should Be 'тысяча пятьсот рублей' }
+  It '5 000 руб' { Convert-SpeechText '5 000 руб' $null $true | Should Be 'пять тысяч рублей' }
+  It '2 000 000 рублей' { Convert-SpeechText '2 000 000 рублей' $null $true | Should Be 'два миллиона рублей' }
+  It 'без пробелов как раньше' {
+    Convert-SpeechText '1500 рублей' $null $true | Should Be 'тысяча пятьсот рублей'
+    Convert-SpeechText '22000 рублей' $null $true | Should Be 'двадцать две тысячи рублей'
+  }
+  It 'проценты и доллары с пробелом' {
+    Convert-SpeechText '12 500 %' $null $true | Should Be 'двенадцать тысяч пятьсот процентов'
+    Convert-SpeechText '$1 500' $null $true | Should Be 'тысяча пятьсот долларов'
+  }
+  It 'соседнее число не склеивается с суммой' { Convert-SpeechText 'В 2026 1500 рублей' $null $true | Should Be 'В 2026 тысяча пятьсот рублей' }
+}
+
 Describe 'Convert-SpeechText: версии не читаются как даты' {
   It 'Python 3.11' { Convert-SpeechText 'Python 3.11' $null $true | Should Be 'Python три точка одиннадцать' }
   It 'версия 1.2.3' { Convert-SpeechText 'версия 1.2.3' $null $true | Should Be 'версия один точка два точка три' }
