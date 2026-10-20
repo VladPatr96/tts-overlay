@@ -181,8 +181,10 @@ python -m pip install sounddevice faster-whisper
 - `edge/edge-worker.py` — воркер Edge TTS (Python): DRM-токен, параллельные попытки, декодирование mp3 в WAV.
 - `silero/silero-worker.py` — воркер Silero: модель в памяти, автоударения и «ё».
 - `stt/stt-worker.py` — воркер распознавания: запись с микрофона и локальный faster-whisper (модель в памяти).
+- `silero/silero-tts.py`, `silero/compare-models.py` — оставлены, но приложением не используются: разовый синтез Silero и сравнение моделей. На первый указывает ключ `sileroScript` в `config.json` — он ни на что не влияет.
 - `sapi/sapi-speak.ps1` — синтез SAPI 5 в отдельном процессе.
 - Текст режется по предложениям на куски: первый озвучивается сразу, следующий докачивается, пока звучит текущий. Повторный текст берётся из кэша (ключ — движок, голос, настройки произношения и сам текст; смена скорости плеера кэш не сбрасывает).
+- Логи воркеров лежат отдельно от `tts-overlay.log`: `%TEMP%\edge-worker.log` и `stt/stt-worker.log` (см. `docs/adr/0002-worker-logs.md`); у Silero лога нет.
 - Папки рядом: `cache/` — озвученные файлы, `spool/` — очередь команд от других программ, `tts-overlay.log` — журнал, `tts-overlay.pid` — номер запущенного процесса.
 
 ## Структура проекта
@@ -196,7 +198,7 @@ config.json            настройки (ключи) — в репозитор
 config.example.json    шаблон настроек без ключей
 pronounce.json         словарь произношения
 edge/                  воркер Edge TTS + файлы DRM из edge-tts (LGPL-3.0)
-silero/                воркер Silero (модели .pt — отдельно)
+silero/                воркер Silero (модели .pt — отдельно); silero-tts.py и compare-models.py — оставлены, не используются
 stt/                   воркер распознавания речи: запись с микрофона + faster-whisper
 sapi/                  синтез SAPI 5
 piper/                 бинарник Piper и голоса (в репозиторий не входят)
