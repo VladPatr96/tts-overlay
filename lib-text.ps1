@@ -135,7 +135,7 @@ function Convert-DecimalToWords([int]$Whole, [string]$FractionDigits) {
 
 function Convert-QuantityToWords([string]$Number, [string]$One, [string]$Few, [string]$Many) {
   # число с единицей: "12.5" + процент -> "двенадцать целых пять десятых процента"
-  $whole = [int](($Number -split '[.,]')[0])
+  $whole = [int](($Number -replace '\s', '' -split '[.,]')[0])
   return "$(Convert-AnyNumberToWords $Number) $(Get-WordForm $whole $One $Few $Many)"
 }
 
@@ -250,6 +250,8 @@ function Convert-SpeechText([string]$Text, [hashtable]$Pronounce, [bool]$ReadNum
   if (-not $Text) { return $Text }
 
   if ($ReadNumbers) {
+    # число для единиц: с пробелом-разделителем разрядов (22 000) или без
+    $num = '(?<!\d)(\d{1,3}(?:[  ]\d{3})+(?![\d])(?:[.,]\d+)?|\d+(?:[.,]\d+)?)'
     # версии: Python 3.11, версия 1.2.3 → числа через «точка» (иначе читаются как дата или дробь)
     $Text = [regex]::Replace($Text, '(?:(?<=[A-Za-z]\s)|(?<pre>(?<=[A-Za-z]))|(?<=верси[яией]\s))\d+(?:\.\d+)+(?![\d.]*\d)(?!\.\d)', {
       param($m)
@@ -271,17 +273,17 @@ function Convert-SpeechText([string]$Text, [hashtable]$Pronounce, [bool]$ReadNum
       return "$(Convert-DayToGenitive $day) $($script:MonthNames[$month - 1])"
     })
     # проценты (вместе с дробной частью: 12.5 процента)
-    $Text = [regex]::Replace($Text, '(\d+(?:[.,]\d+)?)\s*(?:%|процент\w*)', {
+    $Text = [regex]::Replace($Text, ($num + '\s*(?:%|процент\w*)'), {
       param($m)
       return (Convert-QuantityToWords $m.Groups[1].Value 'процент' 'процента' 'процентов')
     })
     # доллары
-    $Text = [regex]::Replace($Text, '\$\s*(\d+(?:[.,]\d+)?)', {
+    $Text = [regex]::Replace($Text, ('\$\s*' + $num), {
       param($m)
       return (Convert-QuantityToWords $m.Groups[1].Value 'доллар' 'доллара' 'долларов')
     })
     # рубли
-    $Text = [regex]::Replace($Text, '(\d+(?:[.,]\d+)?)\s*(?:₽|руб\.|рублей|рубля|руб)\b', {
+    $Text = [regex]::Replace($Text, ($num + '\s*(?:₽|руб\.|рублей|рубля|руб)\b'), {
       param($m)
       return (Convert-QuantityToWords $m.Groups[1].Value 'рубль' 'рубля' 'рублей')
     })
