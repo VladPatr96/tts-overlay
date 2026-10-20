@@ -179,7 +179,7 @@ python -m pip install sounddevice faster-whisper
 - `tts-overlay.ps1` — всё приложение: WPF-оконка, глобальные хоткеи (`RegisterHotKey`), перехват выделения (`Ctrl+C` + проверка номера буфера, чтобы не озвучивать старое), очередь кусков, воспроизведение через `MediaPlayer`, трей, кэш, счётчики затрат.
 - `lib-core.ps1` — лог, конфиг и ключ OpenRouter. Остальные части главного скрипта выносятся в `lib-*.ps1` по слоям (`docs/adr/0001-module-layout.md`).
 - `lib-usage.ps1` — учёт затрат, баланс OpenRouter и курс ЦБ.
-- `lib-providers.ps1` — движки синтеза: запросы, запуск воркеров, голоса, форматы звука.
+- `lib-providers.ps1` — движки синтеза: запросы, запуск воркеров, голоса, форматы звука. Все движки описаны в карте `Get-ProviderMap` (`$script:Providers`); при сбое движка кусок озвучивает запасной через `Invoke-ProviderFallback`.
 - `lib-playback.ps1` — очередь кусков, кэш и воспроизведение.
 - `lib-input.ps1` — хоткеи, перехват выделенного текста, буфер обмена.
 - `lib-stt.ps1` — диктовка: запись, распознавание, результат в буфер.
@@ -193,6 +193,14 @@ python -m pip install sounddevice faster-whisper
 - Логи воркеров лежат отдельно от `tts-overlay.log`: `%TEMP%\edge-worker.log` и `stt/stt-worker.log` (см. `docs/adr/0002-worker-logs.md`); у Silero лога нет.
 - Папки рядом: `cache/` — озвученные файлы, `spool/` — очередь команд от других программ, `tts-overlay.log` — журнал, `tts-overlay.pid` — номер запущенного процесса.
 
+### Как добавить движок
+
+1. **Запрос и воркер.** Для облачного движка с HTTP — функция `New-<Имя>Request` в `lib-providers.ps1`. Для локального — функция `Start-<Имя>Request`, при необходимости воркер в отдельной папке (как `edge/`, `silero/`) и `Start-<Имя>Worker`.
+2. **Запись в карте.** В `Get-ProviderMap` (`lib-providers.ps1`) — новая запись по образцу соседних. Поля описаны комментарием над функцией: подпись (`Title`, `Label`, `Source`), поле конфига с голосом (`VoiceKey`), список голосов (`Voices`), запуск (`Start` или `Request` + `Kind`), формат (`Format`), стоимость (`Cost`, `Currency`), признаки `Free`/`Local`/`RussianOnly`/`Fallbackable`, готовность (`Ready`).
+3. **Конфиг.** Ключи нового движка — в `Get-DefaultConfig` (`lib-core.ps1`) и `config.example.json`.
+4. **Проверка.** Выбрать движок в панели `⚙`, `pwsh -File tts-overlay.ps1 -Say "…"`, смотреть `tts-overlay.log`. Проверить и сбой: воркер, который пишет `.err` или молчит, должен приводить к озвучке запасным движком (Яндекс).
+
+Проверок вида «если движок = …» в коде быть не должно — различия живут в записи карты.
 ## Структура проекта
 
 ```

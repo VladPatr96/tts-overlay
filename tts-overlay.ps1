@@ -668,14 +668,7 @@ $script:Timer.Add_Tick({
             $why = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
             Remove-Item $errFile, $item.Req.RequestFile -Force -ErrorAction SilentlyContinue
             Write-Log "file: ошибка воркера — $why"
-            if ($Cfg.yandexKey -and $script:ActiveProvider -ne 'yandex' -and $item.Req.Text) {
-              Set-Status 'Движок не ответил — озвучиваю через Яндекс'
-              Write-Log 'fallback: воркер вернул ошибку, переключаюсь на Яндекс'
-              Start-Speaking $item.Req.Text 'запасной (Яндекс)' 'yandex'
-            } else {
-              Set-Status "Движок не ответил: $why"
-              $script:Session = $null
-            }
+            Invoke-ProviderFallback $item 'воркер вернул ошибку' "Движок не ответил: $why"
             continue
           }
           # ждём файл, но не бесконечно
@@ -683,14 +676,7 @@ $script:Timer.Add_Tick({
             $script:Pending.Remove($item)
             Remove-Item $outFile, $item.Req.RequestFile -Force -ErrorAction SilentlyContinue
             Write-Log 'file: синтез не ответил'
-            if ($Cfg.yandexKey -and $script:ActiveProvider -ne 'yandex' -and $item.Req.Text) {
-              Set-Status 'Движок не ответил — озвучиваю через Яндекс'
-              Write-Log 'fallback: синтез не уложился в 40 секунд, переключаюсь на Яндекс'
-              Start-Speaking $item.Req.Text 'запасной (Яндекс)' 'yandex'
-            } else {
-              Set-Status 'Синтез не ответил за 40 секунд'
-              $script:Session = $null
-            }
+            Invoke-ProviderFallback $item 'синтез не уложился в 40 секунд' 'Синтез не ответил за 40 секунд'
           }
           continue
         }
@@ -703,14 +689,7 @@ $script:Timer.Add_Tick({
           Try-Play-Next
         } catch {
           Write-Log "file error: $($_.Exception.Message)"
-          if ($Cfg.yandexKey -and $script:ActiveProvider -ne 'yandex' -and $item.Req.Text) {
-            Set-Status 'Движок не ответил — озвучиваю через Яндекс'
-            Write-Log 'fallback: синтез не удался, переключаюсь на Яндекс'
-            Start-Speaking $item.Req.Text 'запасной (Яндекс)' 'yandex'
-          } else {
-            Set-Status "Ошибка разбора звука: $($_.Exception.Message)"
-            $script:Session = $null
-          }
+          Invoke-ProviderFallback $item 'синтез не удался' "Ошибка разбора звука: $($_.Exception.Message)"
         }
         continue
       }
@@ -727,14 +706,7 @@ $script:Timer.Add_Tick({
           Try-Play-Next
         } catch {
           Write-Log "silero error: $($_.Exception.Message)"
-          if ($Cfg.yandexKey -and $script:ActiveProvider -ne 'yandex' -and $item.Req.Text) {
-            Set-Status 'Движок не ответил — озвучиваю через Яндекс'
-            Write-Log 'fallback: синтез не удался, переключаюсь на Яндекс'
-            Start-Speaking $item.Req.Text 'запасной (Яндекс)' 'yandex'
-          } else {
-            Set-Status "Ошибка Silero: $($_.Exception.Message)"
-            $script:Session = $null
-          }
+          Invoke-ProviderFallback $item 'синтез не удался' "Ошибка Silero: $($_.Exception.Message)"
         }
         continue
       }
@@ -833,7 +805,7 @@ $uiSttModelBox.Text = Get-SttCurrentModel
 # источник озвучки: облачные, локальные (Silero/Piper/Edge/SAPI) и модели OpenRouter
 foreach ($id in $script:Providers.Keys) { [void]$uiProviderCombo.Items.Add($script:Providers[$id].Title) }
 $providerIndex = [Array]::IndexOf(@($script:Providers.Keys), [string]$Cfg.provider)
-if ($providerIndex -lt 0) { $providerIndex = 0; $Cfg.provider = 'yandex' }
+if ($providerIndex -lt 0) { $providerIndex = 0; $Cfg.provider = @($script:Providers.Keys)[0] }
 $uiProviderCombo.SelectedIndex = $providerIndex
 $uiChkNumbers.IsChecked = [bool]$Cfg.readNumbers
 $uiChkEnglish.IsChecked = [bool]$Cfg.englishAsEnglish

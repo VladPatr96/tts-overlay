@@ -170,6 +170,20 @@ function Get-ActiveProvider { return $script:Providers[[string]$script:ActivePro
 
 function Get-ConfiguredProvider { return $script:Providers[[string]$Cfg.provider] }
 
+function Invoke-ProviderFallback($Item, [string]$Reason, [string]$FailStatus) {
+  # движок не ответил: озвучиваем кусок запасным (Яндекс), если он доступен и сам не сбойнул;
+  # иначе показываем $FailStatus и сбрасываем сессию
+  $fallback = $script:Providers[$script:FallbackProviderId]
+  if ((& $fallback.Ready) -and (Get-ActiveProvider).Fallbackable -and $Item.Req.Text) {
+    Set-Status 'Движок не ответил — озвучиваю через Яндекс'
+    Write-Log "fallback: $Reason, переключаюсь на Яндекс"
+    Start-Speaking $Item.Req.Text 'запасной (Яндекс)' $script:FallbackProviderId
+  } else {
+    Set-Status $FailStatus
+    $script:Session = $null
+  }
+}
+
 function Get-ProviderKey {
   # ключ счётчика: только он и показывается в интерфейсе
   $provider = Get-ActiveProvider
