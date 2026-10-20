@@ -229,6 +229,13 @@ function Convert-SpeechText([string]$Text, [hashtable]$Pronounce, [bool]$ReadNum
   if (-not $Text) { return $Text }
 
   if ($ReadNumbers) {
+    # версии: Python 3.11, версия 1.2.3 → числа через «точка» (иначе читаются как дата или дробь)
+    $Text = [regex]::Replace($Text, '(?:(?<=[A-Za-z]\s)|(?<pre>(?<=[A-Za-z]))|(?<=верси[яией]\s))\d+(?:\.\d+)+(?![\d.]*\d)(?!\.\d)', {
+      param($m)
+      $words = (($m.Value -split '\.') | ForEach-Object { Convert-NumberToWords ([int]$_) }) -join ' точка '
+      if ($m.Groups['pre'].Success) { return " $words" }
+      return $words
+    })
     # даты: 16.10.2026 и 16.10 (месяц — всегда две цифры, иначе путается с дробью)
     $Text = [regex]::Replace($Text, '\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b', {
       param($m)
@@ -236,7 +243,7 @@ function Convert-SpeechText([string]$Text, [hashtable]$Pronounce, [bool]$ReadNum
       if ($month -lt 1 -or $month -gt 12 -or $day -lt 1 -or $day -gt 31) { return $m.Value }
       return "$(Convert-DayToGenitive $day) $($script:MonthNames[$month - 1]) $(Convert-YearToWords $year)"
     })
-    $Text = [regex]::Replace($Text, '\b(\d{1,2})\.(\d{2})\b(?!\d)', {
+    $Text = [regex]::Replace($Text, '(?<![\d.])\b(\d{1,2})\.(\d{2})\b(?!\d|\.\d)', {
       param($m)
       $day = [int]$m.Groups[1].Value; $month = [int]$m.Groups[2].Value
       if ($month -lt 1 -or $month -gt 12 -or $day -lt 1 -or $day -gt 31) { return $m.Value }
@@ -296,45 +303,47 @@ function ConvertTo-Ssml {
   if (-not $Text) { return '' }
 
   $sb = [System.Text.StringBuilder]::new()
+  $esc = { param([string]$v) [System.Security.SecurityElement]::Escape($v) }
+
+  # одним проходом по сырому тексту: словарь и английские слова превращаются в разметку,
+  # остальное экранируется; готовая разметка повторно не разбирается
+  $alternatives = @()
+  if ($Pronounce -and $Pronounce.Count) {
+    $keys = @($Pronounce.Keys | Where-Object { $_ } | Sort-Object { $_.Length } -Descending)
+    if ($keys.Count) { $alternatives += '(?<dict>' + (($keys | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')' }
+  }
+  if ($EnglishAsEnglish) { $alternatives += '(?<en>[A-Za-z][A-Za-z0-9''\-\.]*)' }
+  $wordPattern = $null
+  if ($alternatives.Count) { $wordPattern = '(?<![\p{L}\p{N}_])(?:' + ($alternatives -join '|') + ')(?![\p{L}\p{N}_])' }
 
   $tokens = [regex]::Split($Text, '(\*\*[^*]+\*\*|\.\.\.|—|--|\n)')
   foreach ($token in $tokens) {
     if (-not $token) { continue }
-    switch -Regex ($token) {
-      '^\*\*(.+)\*\*$' { [void]$sb.Append("<emphasis level='strong'>$([System.Security.SecurityElement]::Escape($Matches[1]))</emphasis>"); continue }
-      '^\.\.\.$'       { [void]$sb.Append("<break time='320ms'/>"); continue }
-      '^—$'            { [void]$sb.Append("<break time='200ms'/>"); continue }
-      '^--$'           { [void]$sb.Append("<break time='200ms'/>"); continue }
-      '^\n$'           { [void]$sb.Append("<break time='260ms'/>"); continue }
-    }
-    $escaped = [System.Security.SecurityElement]::Escape($token)
-    # словарь: произношение (sub alias) и фонетика (phoneme)
-    if ($Pronounce -and $Pronounce.Count) {
-      foreach ($key in ($Pronounce.Keys | Sort-Object { $_.Length } -Descending)) {
-        if (-not $key) { continue }
-        $value = [string]$Pronounce[$key]
-        $pattern = [regex]::Escape($key)
-        $escaped = [regex]::Replace($escaped, "(?<![\p{L}\p{N}_])$pattern(?![\p{L}\p{N}_])", {
-          param($m)
-          if ($value.StartsWith('ipa:')) {
-            $ipa = $value.Substring(4).Trim()
-            return "<phoneme alphabet='ipa' ph='$ipa'>$($m.Value)</phoneme>"
-          }
-          if ($value.StartsWith('en:')) {
-            $spoken = $value.Substring(3).Trim()
-            return "<sub alias='$([System.Security.SecurityElement]::Escape($spoken))'>$($m.Value)</sub>"
-          }
-          return "<sub alias='$([System.Security.SecurityElement]::Escape($value))'>$($m.Value)</sub>"
-        })
+    if ($token -match '^\*\*(.+)\*\*$') { [void]$sb.Append("<emphasis level='strong'>$(& $esc $Matches[1])</emphasis>"); continue }
+    if ($token -eq '...') { [void]$sb.Append("<break time='320ms'/>"); continue }
+    if ($token -eq '—' -or $token -eq '--') { [void]$sb.Append("<break time='200ms'/>"); continue }
+    if ($token -eq "`n") { [void]$sb.Append("<break time='260ms'/>"); continue }
+
+    if (-not $wordPattern) { [void]$sb.Append((& $esc $token)); continue }
+    $pos = 0
+    foreach ($m in [regex]::Matches($token, $wordPattern)) {
+      if ($m.Index -gt $pos) { [void]$sb.Append((& $esc $token.Substring($pos, $m.Index - $pos))) }
+      $pos = $m.Index + $m.Length
+      $word = & $esc $m.Value
+      if ($m.Groups['dict'].Success) {
+        $value = [string]$Pronounce[$m.Value]
+        if ($value.StartsWith('ipa:')) {
+          [void]$sb.Append("<phoneme alphabet='ipa' ph='$(& $esc $value.Substring(4).Trim())'>$word</phoneme>")
+        } elseif ($value.StartsWith('en:')) {
+          [void]$sb.Append("<sub alias='$(& $esc $value.Substring(3).Trim())'>$word</sub>")
+        } else {
+          [void]$sb.Append("<sub alias='$(& $esc $value)'>$word</sub>")
+        }
+      } else {
+        [void]$sb.Append("<lang xml:lang='en-US'>$word</lang>")
       }
     }
-    # английские слова — по-английски (SSML <lang>)
-    if ($EnglishAsEnglish) {
-      $escaped = [regex]::Replace($escaped, '(?<![\p{L}\p{N}_])([A-Za-z][A-Za-z0-9''\-\.]*)(?![\p{L}\p{N}_])', {
-        param($m) "<lang xml:lang='en-US'>$($m.Value)</lang>"
-      })
-    }
-    [void]$sb.Append($escaped)
+    if ($pos -lt $token.Length) { [void]$sb.Append((& $esc $token.Substring($pos))) }
   }
 
   return $sb.ToString()
