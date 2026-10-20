@@ -8,6 +8,7 @@
 |---|---|
 | `tts-overlay.ps1` | главный скрипт: параметры, оверлей, хоткеи, перехват выделения, очередь кусков, кэш, счётчики затрат, панель `⚙`; подключает модули. Части выносятся в `lib-*.ps1` по [ADR 0001](docs/adr/0001-module-layout.md) |
 | `lib-core.ps1` | лог (`Write-Log`), конфиг (`Get-DefaultConfig`, `Import-Config`, `Save-Config`), ключ OpenRouter (`Get-ApiKey`) |
+| `lib-usage.ps1` | учёт затрат, баланс OpenRouter, курс ЦБ, строки затрат в интерфейсе (`Add-Usage`, `Update-CostLine`, `Refresh-Balance`, `Refresh-Rate`) |
 | `lib-text.ps1` | подготовка текста перед синтезом: числа, даты, деньги, дроби, словарь произношения, сборка SSML |
 | `edge/edge-worker.py` | воркер Edge TTS: DRM-токен, параллельные попытки, mp3 → WAV |
 | `silero/silero-worker.py` | воркер Silero: модель в памяти, автоударения и «ё» |
